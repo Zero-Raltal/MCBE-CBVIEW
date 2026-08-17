@@ -1,0 +1,1164 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minecraft BE 1.19+ 图片/视频 转 字符画 by ZeroRaltal</title>
+    <style>
+        * { box-sizing: border-box; font-family: system-ui, sans-serif; }
+        body {
+            background: #1e1e2f; color: #e0e0e0;
+            display: flex; flex-direction: column; align-items: center;
+            padding: 2rem 1rem; margin: 0; min-height: 100vh;
+        }
+        .container {
+            max-width: 1000px; width: 100%;
+            background: #2a2a3d; border-radius: 20px;
+            padding: 2rem 1.5rem; box-shadow: 0 12px 30px rgba(0,0,0,0.6);
+        }
+        h1 { text-align: center; font-weight: 300; margin-top: 0; color: #b0b0e0; display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; }
+        h1 small { display: block; font-size: 0.6rem; color: #8888aa; margin-top: 6px; width: 100%; }
+        .upload-area {
+            display: flex; flex-wrap: wrap; gap: 16px;
+            align-items: center; margin: 16px 0;
+        }
+        .file-input-wrapper { flex: 1; min-width: 200px; }
+        .file-input-wrapper input[type="file"] {
+            width: 100%; padding: 10px;
+            background: #3a3a55; border: 1px dashed #6666aa;
+            border-radius: 10px; color: #ccc; cursor: pointer;
+        }
+        .file-input-wrapper input[type="file"]::file-selector-button {
+            background: #5a5a8a; border: none; color: white;
+            padding: 6px 16px; border-radius: 6px; cursor: pointer;
+        }
+        .btn-convert {
+            background: #6c6cd6; border: none; color: white;
+            font-weight: bold; padding: 12px 28px; border-radius: 30px;
+            font-size: 1rem; cursor: pointer; white-space: nowrap;
+            transition: background 0.2s;
+            display: inline-flex; align-items: center; gap: 6px;
+        }
+        .btn-convert:hover:not(:disabled) { background: #8a8af0; }
+        .btn-convert:disabled { opacity: 0.6; cursor: not-allowed; }
+        .btn-convert.stop { background: #d45a5a; }
+        .btn-convert.stop:hover:not(:disabled) { background: #e07070; }
+        .slider-area {
+            display: flex; align-items: center; gap: 16px;
+            margin: 12px 0; flex-wrap: wrap;
+        }
+        .slider-area label { font-weight: bold; color: #b0b0d0; display: flex; align-items: center; gap: 6px; }
+        .slider-area input[type="range"] {
+            flex: 1; min-width: 140px;
+            background: #3a3a55; height: 6px; border-radius: 3px;
+            -webkit-appearance: none; appearance: none;
+        }
+        .slider-area input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none; appearance: none;
+            width: 18px; height: 18px; background: #8a8af0; border-radius: 50%; cursor: pointer;
+        }
+        .slider-value {
+            background: #22223a; padding: 2px 12px; border-radius: 20px;
+            min-width: 40px; text-align: center; font-weight: bold; color: #d0d0f0;
+        }
+        .extra-controls {
+            display: flex; flex-wrap: wrap; gap: 20px;
+            margin: 8px 0 12px; align-items: center;
+        }
+        .extra-controls label { color: #b0b0d0; display: flex; align-items: center; gap: 6px; }
+        .extra-controls input[type="number"] {
+            background: #3a3a55; color: #e0e0e0; border: 1px solid #6666aa;
+            padding: 4px 8px; border-radius: 8px; width: 80px;
+        }
+        .info-row {
+            display: flex; justify-content: space-between; flex-wrap: wrap;
+            margin: 8px 0 16px; font-size: 0.9rem; color: #aaaac0;
+        }
+        .info-row span { background: #22223a; padding: 4px 12px; border-radius: 30px; }
+        .preview-container {
+            background: #0e0e1a; border-radius: 12px; padding: 16px 12px;
+            margin: 16px 0 10px; border: 1px solid #3a3a5a;
+        }
+        .preview-container pre {
+            margin: 0; font-family: 'Courier New', monospace;
+            font-size: 10px; line-height: 1.2; white-space: pre;
+            word-break: break-all;
+        }
+        .preview-controls {
+            display: flex; align-items: center; flex-wrap: wrap;
+            gap: 10px; margin-top: 10px; padding-top: 10px;
+            border-top: 1px solid #3a3a5a;
+        }
+        .preview-controls button {
+            background: #3a6a6a; border: none; color: white;
+            padding: 4px 12px; border-radius: 16px; cursor: pointer;
+            font-size: 12px;
+            display: inline-flex; align-items: center; gap: 4px;
+        }
+        .preview-controls button:hover { background: #4e8a8a; }
+        .preview-controls .progress-bar-sm {
+            flex: 1; min-width: 100px; height: 6px;
+            background: #3a3a55; border-radius: 3px; cursor: pointer;
+            position: relative;
+        }
+        .preview-controls .progress-fill-sm {
+            height: 100%; width: 0%; background: #6c6cd6;
+            border-radius: 3px; pointer-events: none;
+        }
+        .preview-controls .frame-info {
+            font-size: 11px; color: #aaaac0; min-width: 80px;
+        }
+        .preview-controls input[type="range"] {
+            width: 80px; height: 4px;
+            -webkit-appearance: none; appearance: none;
+            background: #3a3a55;
+        }
+        .preview-controls input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none; width: 10px; height: 10px;
+            border-radius: 50%; background: #6c6cd6; cursor: pointer;
+        }
+        .status-msg {
+            font-size: 0.9rem; color: #d0d0a0; margin: 10px 0 6px 0;
+            min-height: 1.5em; display: flex; align-items: center; gap: 6px;
+        }
+        .command-area { margin-top: 8px; }
+        .command-area label {
+            display: flex; justify-content: space-between;
+            align-items: center; font-weight: bold; color: #b0b0d0;
+            flex-wrap: wrap;
+        }
+        .copy-btn, .download-btn {
+            background: #3a6a3a; border: none; color: white;
+            padding: 6px 18px; border-radius: 20px; cursor: pointer;
+            font-size: 0.9rem; margin-left: 12px;
+            display: inline-flex; align-items: center; gap: 4px;
+        }
+        .download-btn { background: #6a4a3a; }
+        .copy-btn:hover { background: #4e8a4e; }
+        .download-btn:hover { background: #8a6a4a; }
+        .footer { margin-top: 20px; font-size: 0.8rem; color: #555577; }
+        .hidden { display: none; }
+        .progress-bar {
+            width: 100%; background: #3a3a55; border-radius: 10px;
+            margin: 10px 0; height: 20px; overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%; width: 0%; background: #6c6cd6;
+            transition: width 0.2s;
+        }
+        .cmd-block {
+            background: #0e0e1a; border-left: 4px solid #6c6cd6;
+            margin: 4px 0; padding: 6px 10px;
+            display: flex; align-items: center; justify-content: space-between;
+            flex-wrap: wrap;
+        }
+        .cmd-block .seq-num {
+            background: #3a3a55; padding: 2px 10px; border-radius: 12px;
+            font-size: 12px; color: #b0b0e0;
+        }
+        .cmd-block .copy-btn-sm {
+            background: #3a6a3a; border: none; color: white;
+            padding: 2px 14px; border-radius: 12px; cursor: pointer;
+            font-size: 12px;
+            display: inline-flex; align-items: center; gap: 4px;
+        }
+        .cmd-block .copy-btn-sm:hover { background: #4e8a4e; }
+        .cmd-block .cmd-label {
+            font-size: 12px; color: #aaaac0; flex: 1; margin: 0 10px;
+        }
+        .svg-icon {
+            display: inline-block; vertical-align: middle;
+            width: 1.2em; height: 1.2em; fill: currentColor;
+            flex-shrink: 0;
+        }
+        .svg-icon-sm {
+            width: 1em; height: 1em;
+        }
+        @media (max-width: 600px) {
+            .container { padding: 1rem; }
+            .preview-container pre { font-size: 6px; }
+            .btn-convert { width: 100%; justify-content: center; }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>
+        <svg class="svg-icon" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" stroke-width="1.5" fill="none"/><circle cx="8.5" cy="8.5" r="1.5" fill="currentColor"/><circle cx="15.5" cy="8.5" r="1.5" fill="currentColor"/><path d="M5 16l4-4 3 3 4-4 3 3" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
+        <svg class="svg-icon" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" stroke-width="1.5" fill="none"/><polygon points="9,6 9,18 17,12" fill="currentColor"/></svg>
+         → 
+        <svg class="svg-icon" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" fill="currentColor"/></svg>
+        Minecraft BE 1.19+ 图片/视频 转 字符画 by ZeroRaltal
+        <small>128×32 | 27色 | Floyd‑Steinberg 抖动</small>
+    </h1>
+
+    <div class="upload-area">
+        <div class="file-input-wrapper">
+            <input type="file" id="fileInput" accept="image/*,video/*">
+        </div>
+        <button class="btn-convert" id="convertBtn">
+            <svg class="svg-icon" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" fill="currentColor"/></svg>
+            转换并生成命令
+        </button>
+    </div>
+
+    <div id="videoControls" class="hidden">
+        <div class="slider-area">
+            <label for="fpsSlider">
+                <svg class="svg-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.5" fill="none"/><polyline points="12 6 12 12 16 14" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
+                帧率 (FPS)
+            </label>
+            <input type="range" id="fpsSlider" min="1" max="20" value="10" step="1">
+            <span class="slider-value" id="fpsValue">10</span>
+            <span style="font-size:0.8rem; color:#8888aa;">总帧数 = 视频时长 × FPS</span>
+        </div>
+        <div class="extra-controls">
+            <label>
+                <svg class="svg-icon" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.5" fill="none"/><path d="M8 2v4M16 2v4" stroke="currentColor" stroke-width="1.5"/></svg>
+                循环延迟 (tick)：
+                <input type="number" id="delayInput" value="2" min="1" max="20" step="1">
+            </label>
+            <span style="font-size:0.8rem; color:#8888aa;">自动根据 FPS 计算 (20/FPS)，可手动调整</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+        <div class="info-row">
+            <span id="videoInfo">未加载视频</span>
+        </div>
+    </div>
+
+    <div class="slider-area">
+        <label for="colorBoost">
+            <svg class="svg-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.5" fill="none"/><path d="M12 2v20M2 12h20" stroke="currentColor" stroke-width="1.5" opacity="0.3"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg>
+            色彩增强
+        </label>
+        <input type="range" id="colorBoost" min="1.0" max="3.0" step="0.1" value="1.0">
+        <span class="slider-value" id="boostValue">1.0</span>
+        <span style="font-size:0.8rem; color:#8888aa;">（值越大，颜色越鲜艳</span>
+    </div>
+    <div class="mode-selector">
+        <label for="cmdMode">
+            <svg class="svg-icon" viewBox="0 0 24 24"><path d="M3 5h18M3 12h18M3 19h18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            命令模式：
+        </label>
+        <select id="cmdMode">3
+            <option value="titleraw">titleraw actionbar (物品栏上方显示)</option>
+            <option value="tellraw">tellraw (聊天栏显示)</option>
+        </select>
+        <span style="font-size:0.8rem; color:#8888aa;">切换此选项不需要重新生成</span>
+    </div>
+
+    <div class="preview-container" id="previewContainer">
+        <pre id="previewPre" style="color: #888; font-size: 10px;">
+            <svg class="svg-icon" viewBox="0 0 24 24" style="width:20px;height:20px;"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" fill="currentColor"/></svg>
+            上传图片或视频后点击转换
+        </pre>
+        <div id="videoPreviewControls" class="preview-controls hidden">
+            <button id="playPauseBtn">
+                <svg class="svg-icon svg-icon-sm" viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21" fill="currentColor"/></svg>
+                播放
+            </button>
+            <div class="progress-bar-sm" id="previewProgressBar">
+                <div class="progress-fill-sm" id="previewProgressFill"></div>
+            </div>
+            <span class="frame-info" id="frameInfo">0 / 0</span>
+            <span style="font-size:11px;color:#8888aa;">速度</span>
+            <input type="range" id="previewSpeedSlider" min="0.5" max="3.0" step="0.1" value="1.0">
+            <span class="speed-value" id="previewSpeedValue" style="font-size:11px;color:#aaaac0;">1.0x</span>
+            <button id="loopBtn" style="background:#3a3a55;">
+                <svg class="svg-icon svg-icon-sm" viewBox="0 0 24 24"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z" fill="currentColor"/></svg>
+                循环
+            </button>
+        </div>
+    </div>
+
+    <div class="status-msg" id="statusMsg">
+        <svg class="svg-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.5" fill="none"/><path d="M12 8v4M12 16h.01" stroke="currentColor" stroke-width="1.5"/></svg>
+        上传图片或视频，点击转换生成。
+    </div>
+
+    <div class="command-area">
+        <label>
+            <span>
+                <svg class="svg-icon" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" stroke-width="1.5" fill="none"/><path d="M8 7h8M8 12h8M8 17h5" stroke="currentColor" stroke-width="1.5"/></svg>
+                输出命令
+            </span>
+            <span>
+                <button class="copy-btn" id="copyAllBtn">
+                    <svg class="svg-icon" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" stroke="currentColor" stroke-width="1.5" fill="none"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
+                    复制全部
+                </button>
+                <button class="download-btn" id="downloadBtn">
+                    <svg class="svg-icon" viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" fill="currentColor"/></svg>
+                    下载为 .txt
+                </button>
+            </span>
+        </label>
+        <div id="commandList"></div>
+    </div>
+
+    <div class="footer">@ ZeroRaltal</div>
+</div>
+
+<script>
+    (function() {
+        // SVG 图标常量
+        const ICONS = {
+            play: `<svg class="svg-icon svg-icon-sm" viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21" fill="currentColor"/></svg>`,
+            pause: `<svg class="svg-icon svg-icon-sm" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" fill="currentColor"/><rect x="14" y="4" width="4" height="16" fill="currentColor"/></svg>`,
+            stop: `<svg class="svg-icon svg-icon-sm" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" fill="currentColor"/></svg>`,
+            loop: `<svg class="svg-icon svg-icon-sm" viewBox="0 0 24 24"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z" fill="currentColor"/></svg>`,
+            copy: `<svg class="svg-icon svg-icon-sm" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" stroke="currentColor" stroke-width="1.5" fill="none"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>`,
+            download: `<svg class="svg-icon svg-icon-sm" viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" fill="currentColor"/></svg>`,
+            check: `<svg class="svg-icon svg-icon-sm" viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" fill="currentColor"/></svg>`,
+            warn: `<svg class="svg-icon svg-icon-sm" viewBox="0 0 24 24"><path d="M1 21h22L12 2 1 21zm10-3h2v2h-2v-2zm0-8h2v6h-2v-6z" fill="currentColor"/></svg>`,
+            error: `<svg class="svg-icon svg-icon-sm" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" fill="currentColor"/></svg>`,
+            info: `<svg class="svg-icon svg-icon-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.5" fill="none"/><path d="M12 8v4M12 16h.01" stroke="currentColor" stroke-width="1.5"/></svg>`,
+            clock: `<svg class="svg-icon svg-icon-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.5" fill="none"/><polyline points="12 6 12 12 16 14" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>`,
+            refresh: `<svg class="svg-icon svg-icon-sm" viewBox="0 0 24 24"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z" fill="currentColor"/></svg>`,
+        };
+
+        // 颜色表
+        function hexToRgb(hex) {
+            const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+            return result ? [
+                parseInt(result[1], 16),
+                parseInt(result[2], 16),
+                parseInt(result[3], 16)
+            ] : [0, 0, 0];
+        }
+
+        const colorData = [
+            { code: '0', hex: '#000000', isGray: true },
+            { code: '1', hex: '#0000AA', isGray: false },
+            { code: '2', hex: '#00AA00', isGray: false },
+            { code: '3', hex: '#00AAAA', isGray: false },
+            { code: '4', hex: '#AA0000', isGray: false },
+            { code: '5', hex: '#AA00AA', isGray: false },
+            { code: '6', hex: '#FFAA00', isGray: false },
+            { code: '7', hex: '#C5C5C5', isGray: true },
+            { code: '8', hex: '#545454', isGray: true },
+            { code: '9', hex: '#5454FF', isGray: false },
+            { code: 'a', hex: '#54FF54', isGray: false },
+            { code: 'b', hex: '#54FFFF', isGray: false },
+            { code: 'c', hex: '#FF5454', isGray: false },
+            { code: 'd', hex: '#D747D7', isGray: false },
+            { code: 'e', hex: '#FFFF54', isGray: false },
+            { code: 'f', hex: '#FFFFFF', isGray: true },
+            { code: 'g', hex: '#C2A712', isGray: false },
+            { code: 'h', hex: '#E2D3D1', isGray: false },
+            { code: 'i', hex: '#CEC9C9', isGray: false },
+            { code: 'j', hex: '#44393A', isGray: false },
+            { code: 'm', hex: '#961506', isGray: false },
+            { code: 'n', hex: '#B4684D', isGray: false },
+            { code: 'p', hex: '#DEB02C', isGray: false },
+            { code: 'q', hex: '#119F36', isGray: false },
+            { code: 's', hex: '#2CB9A8', isGray: false },
+            { code: 't', hex: '#20487A', isGray: false },
+            { code: 'u', hex: '#9A5CC5', isGray: false }
+        ];
+
+        const COLORS = colorData.map(c => ({
+            code: c.code,
+            hex: c.hex,
+            rgb: hexToRgb(c.hex),
+            isGray: c.isGray
+        }));
+
+        const colorLookup = COLORS.map(c => ({
+            code: c.code,
+            rgb: c.rgb,
+            hex: c.hex,
+            isGray: c.isGray
+        }));
+
+        // DOM
+        const fileInput = document.getElementById('fileInput');
+        const convertBtn = document.getElementById('convertBtn');
+        const previewPre = document.getElementById('previewPre');
+        const commandList = document.getElementById('commandList');
+        const copyAllBtn = document.getElementById('copyAllBtn');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const statusMsg = document.getElementById('statusMsg');
+        const colorBoostSlider = document.getElementById('colorBoost');
+        const boostValueDisplay = document.getElementById('boostValue');
+        const cmdModeSelect = document.getElementById('cmdMode');
+        const videoControls = document.getElementById('videoControls');
+        const fpsSlider = document.getElementById('fpsSlider');
+        const fpsValue = document.getElementById('fpsValue');
+        const delayInput = document.getElementById('delayInput');
+        const progressFill = document.getElementById('progressFill');
+        const videoInfo = document.getElementById('videoInfo');
+        const videoPreviewControls = document.getElementById('videoPreviewControls');
+        const playPauseBtn = document.getElementById('playPauseBtn');
+        const previewProgressBar = document.getElementById('previewProgressBar');
+        const previewProgressFill = document.getElementById('previewProgressFill');
+        const frameInfo = document.getElementById('frameInfo');
+        const previewSpeedSlider = document.getElementById('previewSpeedSlider');
+        const previewSpeedValue = document.getElementById('previewSpeedValue');
+        const loopBtn = document.getElementById('loopBtn');
+
+        // 存储当前处理模式和数据
+        let currentMode = null; // 'image' or 'video'
+        let imageData = null;   // { charArt, singleCmd }
+        let videoFrameData = null;
+        let isProcessing = false;
+        let stopRequested = false;
+
+        // 滑块同步
+        colorBoostSlider.addEventListener('input', () => {
+            boostValueDisplay.textContent = parseFloat(colorBoostSlider.value).toFixed(1);
+        });
+
+        fpsSlider.addEventListener('input', () => {
+            const fps = parseInt(fpsSlider.value);
+            fpsValue.textContent = fps;
+            let delay = Math.round(20 / fps);
+            if (delay < 1) delay = 1;
+            if (delay > 20) delay = 20;
+            delayInput.value = delay;
+        });
+
+        delayInput.addEventListener('change', () => {
+            let val = parseInt(delayInput.value);
+            if (isNaN(val) || val < 1) val = 1;
+            if (val > 20) val = 20;
+            delayInput.value = val;
+        });
+
+        // 文件选择
+        fileInput.addEventListener('change', function() {
+            const file = this.files[0];
+            commandList.innerHTML = '';
+            previewPre.innerHTML = '上传图片或视频后点击转换';
+            videoPreviewControls.classList.add('hidden');
+            imageData = null;
+            videoFrameData = null;
+            currentMode = null;
+            commandList._allCmds = null;
+            if (previewTimer) {
+                clearInterval(previewTimer);
+                previewTimer = null;
+            }
+            isPlaying = false;
+            playPauseBtn.innerHTML = `${ICONS.play} 播放`;
+
+            if (!file) {
+                videoControls.classList.add('hidden');
+                setStatus('info', '请选择文件');
+                return;
+            }
+            const type = file.type;
+            if (type.startsWith('video/')) {
+                videoControls.classList.remove('hidden');
+                videoInfo.textContent = `已选择: ${file.name}`;
+                progressFill.style.width = '0%';
+                setStatus('info', '视频已加载，调整参数后点击转换');
+            } else if (type.startsWith('image/')) {
+                videoControls.classList.add('hidden');
+                setStatus('info', '图片已加载，点击转换');
+            } else {
+                videoControls.classList.add('hidden');
+                setStatus('error', '不支持的文件类型');
+            }
+        });
+
+        // 带抖动的颜色匹配和字符生成
+        function canvasToCharArtWithDithering(canvas, boostFactor) {
+            const W = 128, H = 32;
+            const ctx = canvas.getContext('2d');
+            const imageData = ctx.getImageData(0, 0, W, H);
+            const data = imageData.data; // Uint8ClampedArray
+
+            // 复制像素数据用于抖动修改
+            const pixels = new Float32Array(data.length);
+            for (let i = 0; i < data.length; i++) {
+                pixels[i] = data[i];
+            }
+
+            // 查找最接近的颜色
+            function findClosestColor(r, g, b) {
+                const max = Math.max(r, g, b);
+                const min = Math.min(r, g, b);
+                const isGray = (max - min) < 25;
+
+                let best = null;
+                let minDist = Infinity;
+                for (const c of colorLookup) {
+                    const [cr, cg, cb] = c.rgb;
+                    const dr = r - cr, dg = g - cg, db = b - cb;
+                    let dist = 0.299 * dr * dr + 0.587 * dg * dg + 0.114 * db * db;
+                    if (c.isGray && !isGray) {
+                        dist *= boostFactor;
+                    }
+                    if (dist < minDist) {
+                        minDist = dist;
+                        best = c;
+                    }
+                }
+                return best;
+            }
+
+            // 输出字符画
+            let charArt = '§l';
+            let lastCode = null;
+
+            // Floyd-Steinberg 抖动
+            for (let row = 0; row < H; row++) {
+                for (let col = 0; col < W; col++) {
+                    const idx = (row * W + col) * 4;
+                    const r = pixels[idx];
+                    const g = pixels[idx + 1];
+                    const b = pixels[idx + 2];
+
+                    // 找最近颜色
+                    const closest = findClosestColor(r, g, b);
+                    const [cr, cg, cb] = closest.rgb;
+                    const code = closest.code;
+
+                    // 写入字符
+                    if (code !== lastCode) {
+                        charArt += '§' + code;
+                        lastCode = code;
+                    }
+                    charArt += '|';
+
+                    // 计算误差
+                    const errR = r - cr;
+                    const errG = g - cg;
+                    const errB = b - cb;
+
+                    // 扩散到右侧 (7/16)
+                    if (col + 1 < W) {
+                        const nIdx = idx + 4;
+                        pixels[nIdx] += errR * 7 / 16;
+                        pixels[nIdx + 1] += errG * 7 / 16;
+                        pixels[nIdx + 2] += errB * 7 / 16;
+                    }
+                    // 扩散到左下 (3/16)
+                    if (row + 1 < H && col - 1 >= 0) {
+                        const nIdx = (row + 1) * W * 4 + (col - 1) * 4;
+                        pixels[nIdx] += errR * 3 / 16;
+                        pixels[nIdx + 1] += errG * 3 / 16;
+                        pixels[nIdx + 2] += errB * 3 / 16;
+                    }
+                    // 扩散到下方 (5/16)
+                    if (row + 1 < H) {
+                        const nIdx = (row + 1) * W * 4 + col * 4;
+                        pixels[nIdx] += errR * 5 / 16;
+                        pixels[nIdx + 1] += errG * 5 / 16;
+                        pixels[nIdx + 2] += errB * 5 / 16;
+                    }
+                    // 扩散到右下 (1/16)
+                    if (row + 1 < H && col + 1 < W) {
+                        const nIdx = (row + 1) * W * 4 + (col + 1) * 4;
+                        pixels[nIdx] += errR * 1 / 16;
+                        pixels[nIdx + 1] += errG * 1 / 16;
+                        pixels[nIdx + 2] += errB * 1 / 16;
+                    }
+                }
+                // 行末换行
+                if (row < H - 1) {
+                    charArt += '\n';
+                    lastCode = null;
+                }
+            }
+
+            return charArt;
+        }
+
+        // 构建命令
+        function buildSingleCommand(charArt, mode) {
+            let text = charArt;
+            if (mode === 'titleraw') {
+                text += '\n'.repeat(16);
+            }
+            const escaped = text.replace(/\n/g, '\\n');
+            const json = `{"rawtext":[{"text":"${escaped}"}]}`;
+            if (mode === 'tellraw') {
+                return `tellraw @a ${json}`;
+            } else {
+                return `titleraw @a actionbar ${json}`;
+            }
+        }
+
+        function renderPreview(charArt) {
+            let currentColor = '#FFFFFF';
+            let html = '';
+            let i = 0;
+            while (i < charArt.length) {
+                const ch = charArt[i];
+                if (ch === '§' && i + 1 < charArt.length) {
+                    const code = charArt[i + 1];
+                    const colorObj = COLORS.find(c => c.code === code);
+                    if (colorObj) {
+                        currentColor = colorObj.hex;
+                    }
+                    i += 2;
+                    continue;
+                }
+                if (ch === '\n') {
+                    html += '\n';
+                    i++;
+                    continue;
+                }
+                html += `<span style="color:${currentColor};">${ch}</span>`;
+                i++;
+            }
+            return html;
+        }
+
+        // 状态提示
+        function setStatus(type, msg) {
+            const iconMap = {
+                info: ICONS.info,
+                success: ICONS.check,
+                error: ICONS.error,
+                warn: ICONS.warn,
+                clock: ICONS.clock,
+                refresh: ICONS.refresh
+            };
+            const icon = iconMap[type] || ICONS.info;
+            statusMsg.innerHTML = `${icon} ${msg}`;
+        }
+
+        // 图片处理
+        async function processImage(file) {
+            if (isProcessing) return;
+            isProcessing = true;
+            convertBtn.disabled = true;
+            convertBtn.innerHTML = `${ICONS.clock} 处理中...`;
+            setStatus('clock', '正在处理图片...');
+            try {
+                const boost = parseFloat(colorBoostSlider.value);
+                const mode = cmdModeSelect.value;
+                const img = await loadImage(file);
+                const canvas = document.createElement('canvas');
+                canvas.width = 128;
+                canvas.height = 32;
+                const ctx = canvas.getContext('2d');
+                ctx.imageSmoothingEnabled = true;
+                ctx.drawImage(img, 0, 0, 128, 32);
+                const charArt = canvasToCharArtWithDithering(canvas, boost);
+                const singleCmd = buildSingleCommand(charArt, mode);
+                imageData = { charArt, singleCmd };
+                currentMode = 'image';
+                previewPre.innerHTML = renderPreview(charArt);
+                videoControls.classList.add('hidden');
+                videoPreviewControls.classList.add('hidden');
+                commandList.innerHTML = `
+                    <div class="cmd-block">
+                        <span class="seq-num">#1</span>
+                        <span class="cmd-label">图片字符画</span>
+                        <button class="copy-btn-sm" data-cmd="${encodeURIComponent(singleCmd)}">${ICONS.copy} 复制</button>
+                    </div>
+                `;
+                commandList._allCmds = [singleCmd];
+                bindCopyButtons();
+                setStatus('success', '图片转换成功！');
+            } catch (err) {
+                setStatus('error', err.message);
+            } finally {
+                isProcessing = false;
+                convertBtn.disabled = false;
+                convertBtn.innerHTML = `${ICONS.check} 转换并生成命令`;
+                convertBtn.classList.remove('stop');
+            }
+        }
+
+        // 视频处理
+        async function processVideo(file) {
+            if (isProcessing) return;
+            isProcessing = true;
+            stopRequested = false;
+            convertBtn.disabled = false;
+            convertBtn.innerHTML = `${ICONS.stop} 停止`;
+            convertBtn.classList.add('stop');
+            setStatus('clock', '正在加载视频...');
+            progressFill.style.width = '0%';
+            videoControls.classList.remove('hidden');
+
+            try {
+                const boost = parseFloat(colorBoostSlider.value);
+                const mode = cmdModeSelect.value;
+                const fps = parseInt(fpsSlider.value);
+                let delay = parseInt(delayInput.value);
+                if (isNaN(delay) || delay < 1) delay = 1;
+                if (delay > 20) delay = 20;
+                delayInput.value = delay;
+
+                const video = await loadVideo(file);
+                const duration = video.duration;
+                if (!duration || duration <= 0) throw new Error('无法获取视频时长');
+                const totalFrames = Math.floor(duration * fps);
+                if (totalFrames < 1) throw new Error('视频时长太短或帧率太低，无有效帧');
+                videoInfo.textContent = `时长 ${duration.toFixed(2)}s | 帧率 ${fps} FPS | 总帧数 ${totalFrames}`;
+
+                const canvas = document.createElement('canvas');
+                canvas.width = 128;
+                canvas.height = 32;
+                const ctx = canvas.getContext('2d');
+                ctx.imageSmoothingEnabled = true;
+
+                let allCharArts = [];
+                let failedFrames = 0;
+
+                for (let i = 1; i <= totalFrames; i++) {
+                    if (stopRequested) {
+                        setStatus('warn', '用户停止处理。');
+                        progressFill.style.width = '0%';
+                        videoInfo.textContent = '已停止';
+                        return;
+                    }
+                    const time = Math.min(i / fps, duration - 0.001);
+                    try {
+                        await seekVideo(video, time);
+                        ctx.drawImage(video, 0, 0, 128, 32);
+                        const charArt = canvasToCharArtWithDithering(canvas, boost);
+                        allCharArts.push(charArt);
+                    } catch (seekErr) {
+                        failedFrames++;
+                        allCharArts.push('');
+                    }
+                    const progress = (i / totalFrames) * 100;
+                    progressFill.style.width = progress + '%';
+                    setStatus('clock', `处理帧 ${i}/${totalFrames} (跳过 ${failedFrames} 帧)`);
+                    await sleep(30);
+                }
+
+                videoFrameData = {
+                    allCharArts: allCharArts,
+                    totalFrames: totalFrames,
+                    fps: fps,
+                    failedFrames: failedFrames
+                };
+                currentMode = 'video';
+
+                generateVideoCommands(videoFrameData, mode, delay);
+                initVideoPreview(videoFrameData);
+
+                if (allCharArts.length > 0 && allCharArts[0]) {
+                    previewPre.innerHTML = renderPreview(allCharArts[0]);
+                } else {
+                    previewPre.innerHTML = '无有效帧';
+                }
+                setStatus('success', `视频处理完成！有效帧 ${totalFrames - failedFrames}，延迟 ${delay} tick。`);
+                progressFill.style.width = '100%';
+            } catch (err) {
+                setStatus('error', err.message);
+                console.error(err);
+            } finally {
+                isProcessing = false;
+                convertBtn.disabled = false;
+                convertBtn.innerHTML = `${ICONS.check} 转换并生成命令`;
+                convertBtn.classList.remove('stop');
+                stopRequested = false;
+            }
+        }
+
+        // ---------- 生成视频命令 ----------
+        function generateVideoCommands(data, mode, delay) {
+            if (!data) return;
+            const { allCharArts, totalFrames, failedFrames } = data;
+
+            const objectiveCmd = 'scoreboard objectives add f dummy';
+            const pulseCmd = 'scoreboard players set f f 0';
+            const loopCmd = `scoreboard players add f f 1`;
+
+            let allCmds = [];
+
+            const headerCmds = [
+                { label: '创建计分板', cmd: objectiveCmd },
+                { label: '脉冲归零', cmd: pulseCmd },
+                { label: `循环 (延迟 ${delay} tick)`, cmd: loopCmd }
+            ];
+            let chainCmds = [];
+            for (let i = 0; i < allCharArts.length; i++) {
+                const charArt = allCharArts[i];
+                if (!charArt) {
+                    chainCmds.push(`# Frame ${i+1} skipped`);
+                    continue;
+                }
+                const singleCmd = buildSingleCommand(charArt, mode);
+                const condCmd = `execute if score f f matches ${i+1} run ${singleCmd}`;
+                chainCmds.push(condCmd);
+            }
+
+            let html = '';
+            let seq = 1;
+            for (const h of headerCmds) {
+                allCmds.push(h.cmd);
+                html += `
+                    <div class="cmd-block">
+                        <span class="seq-num">#${seq}</span>
+                        <span class="cmd-label">${h.label}</span>
+                        <button class="copy-btn-sm" data-cmd="${encodeURIComponent(h.cmd)}">${ICONS.copy} 复制</button>
+                    </div>
+                `;
+                seq++;
+            }
+            for (let i = 0; i < chainCmds.length; i++) {
+                const cmd = chainCmds[i];
+                allCmds.push(cmd);
+                const label = `连锁 #${i+1}`;
+                html += `
+                    <div class="cmd-block">
+                        <span class="seq-num">#${seq}</span>
+                        <span class="cmd-label">${label}</span>
+                        <button class="copy-btn-sm" data-cmd="${encodeURIComponent(cmd)}">${ICONS.copy} 复制</button>
+                    </div>
+                `;
+                seq++;
+            }
+            commandList.innerHTML = html;
+            commandList._allCmds = allCmds;
+            bindCopyButtons();
+        }
+
+        function bindCopyButtons() {
+            document.querySelectorAll('.cmd-block .copy-btn-sm').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const cmd = decodeURIComponent(this.dataset.cmd);
+                    copyToClipboard(cmd, this);
+                });
+            });
+        }
+
+        // 视频预览播放器
+        let previewTimer = null;
+        let currentFrameIndex = 0;
+        let isPlaying = false;
+        let loopEnabled = false;
+        let previewFrames = [];
+        let previewFps = 1;
+
+        function initVideoPreview(data) {
+            if (!data || !data.allCharArts || data.allCharArts.length === 0) {
+                videoPreviewControls.classList.add('hidden');
+                return;
+            }
+            previewFrames = data.allCharArts.filter(c => c !== '');
+            if (previewFrames.length === 0) {
+                videoPreviewControls.classList.add('hidden');
+                return;
+            }
+            previewFps = data.fps || 1;
+            currentFrameIndex = 0;
+            isPlaying = false;
+            if (previewTimer) {
+                clearInterval(previewTimer);
+                previewTimer = null;
+            }
+            videoPreviewControls.classList.remove('hidden');
+            updatePreviewFrame(0);
+            frameInfo.textContent = `1 / ${previewFrames.length}`;
+            previewProgressFill.style.width = '0%';
+            playPauseBtn.innerHTML = `${ICONS.play} 播放`;
+            // 重新绑定事件
+            const newPlayBtn = playPauseBtn.cloneNode(true);
+            playPauseBtn.parentNode.replaceChild(newPlayBtn, playPauseBtn);
+            const newLoopBtn = loopBtn.cloneNode(true);
+            loopBtn.parentNode.replaceChild(newLoopBtn, loopBtn);
+
+            const playBtn = document.getElementById('playPauseBtn');
+            const loopBtnEl = document.getElementById('loopBtn');
+            const progBar = document.getElementById('previewProgressBar');
+            const progFill = document.getElementById('previewProgressFill');
+            const frameInfoEl = document.getElementById('frameInfo');
+            const speedSlider = document.getElementById('previewSpeedSlider');
+            const speedVal = document.getElementById('previewSpeedValue');
+
+            window._playBtn = playBtn;
+            window._progFill = progFill;
+            window._frameInfo = frameInfoEl;
+
+            playBtn.addEventListener('click', function() {
+                if (isPlaying) {
+                    pausePreview();
+                } else {
+                    playPreview();
+                }
+            });
+
+            let isDraggingPreview = false;
+            progBar.addEventListener('mousedown', function(e) {
+                isDraggingPreview = true;
+                const rect = progBar.getBoundingClientRect();
+                const x = (e.clientX - rect.left) / rect.width;
+                const idx = Math.floor(x * previewFrames.length);
+                if (idx >= 0 && idx < previewFrames.length) {
+                    currentFrameIndex = idx;
+                    updatePreviewFrame(idx);
+                    frameInfoEl.textContent = `${idx+1} / ${previewFrames.length}`;
+                    progFill.style.width = (idx / (previewFrames.length - 1)) * 100 + '%';
+                }
+            });
+            window.addEventListener('mousemove', function(e) {
+                if (isDraggingPreview) {
+                    const rect = progBar.getBoundingClientRect();
+                    const x = (e.clientX - rect.left) / rect.width;
+                    const idx = Math.floor(x * previewFrames.length);
+                    if (idx >= 0 && idx < previewFrames.length) {
+                        currentFrameIndex = idx;
+                        updatePreviewFrame(idx);
+                        frameInfoEl.textContent = `${idx+1} / ${previewFrames.length}`;
+                        progFill.style.width = (idx / (previewFrames.length - 1)) * 100 + '%';
+                    }
+                }
+            });
+            window.addEventListener('mouseup', function() {
+                if (isDraggingPreview) {
+                    isDraggingPreview = false;
+                    if (isPlaying) {
+                        pausePreview();
+                        playPreview();
+                    }
+                }
+            });
+
+            speedSlider.addEventListener('input', function() {
+                const val = parseFloat(this.value);
+                speedVal.textContent = val.toFixed(1) + 'x';
+                if (isPlaying) {
+                    pausePreview();
+                    playPreview();
+                }
+            });
+
+            loopBtnEl.addEventListener('click', function() {
+                loopEnabled = !loopEnabled;
+                this.style.background = loopEnabled ? '#4e8a8a' : '#3a3a55';
+                this.innerHTML = loopEnabled ? `${ICONS.loop} 循环开` : `${ICONS.loop} 循环`;
+            });
+        }
+
+        function updatePreviewFrame(index) {
+            if (index < 0 || index >= previewFrames.length) return;
+            const charArt = previewFrames[index];
+            previewPre.innerHTML = renderPreview(charArt);
+            const progFill = document.getElementById('previewProgressFill');
+            if (progFill) {
+                progFill.style.width = (index / (previewFrames.length - 1)) * 100 + '%';
+            }
+            const frameInfoEl = document.getElementById('frameInfo');
+            if (frameInfoEl) {
+                frameInfoEl.textContent = `${index+1} / ${previewFrames.length}`;
+            }
+        }
+
+        function playPreview() {
+            if (isPlaying) return;
+            if (currentFrameIndex >= previewFrames.length - 1) {
+                currentFrameIndex = 0;
+                updatePreviewFrame(0);
+            }
+            isPlaying = true;
+            document.getElementById('playPauseBtn').innerHTML = `${ICONS.pause} 暂停`;
+            const speed = parseFloat(document.getElementById('previewSpeedSlider').value);
+            const interval = 1000 / (previewFps * speed);
+            if (previewTimer) clearInterval(previewTimer);
+            previewTimer = setInterval(function() {
+                if (currentFrameIndex < previewFrames.length - 1) {
+                    currentFrameIndex++;
+                    updatePreviewFrame(currentFrameIndex);
+                } else {
+                    if (loopEnabled) {
+                        currentFrameIndex = 0;
+                        updatePreviewFrame(0);
+                    } else {
+                        pausePreview();
+                    }
+                }
+            }, interval);
+        }
+
+        function pausePreview() {
+            isPlaying = false;
+            if (previewTimer) {
+                clearInterval(previewTimer);
+                previewTimer = null;
+            }
+            document.getElementById('playPauseBtn').innerHTML = `${ICONS.play} 播放`;
+        }
+
+        // 辅助函数
+        function loadImage(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.onload = () => resolve(img);
+                    img.onerror = () => reject(new Error('图片加载失败'));
+                    img.src = e.target.result;
+                };
+                reader.onerror = () => reject(new Error('文件读取失败'));
+                reader.readAsDataURL(file);
+            });
+        }
+
+        function loadVideo(file) {
+            return new Promise((resolve, reject) => {
+                const url = URL.createObjectURL(file);
+                const video = document.createElement('video');
+                video.preload = 'auto';
+                video.muted = true;
+                video.onloadedmetadata = () => {
+                    resolve(video);
+                };
+                video.onerror = () => {
+                    URL.revokeObjectURL(url);
+                    reject(new Error('视频加载失败'));
+                };
+                video.src = url;
+            });
+        }
+
+        function seekVideo(video, time) {
+            return new Promise((resolve) => {
+                if (Math.abs(video.currentTime - time) < 0.01) {
+                    resolve();
+                    return;
+                }
+                let resolved = false;
+                const onSeeked = () => {
+                    if (!resolved) {
+                        resolved = true;
+                        video.onseeked = null;
+                        resolve();
+                    }
+                };
+                video.onseeked = onSeeked;
+                try {
+                    video.currentTime = time;
+                } catch (e) {
+                    if (!resolved) {
+                        resolved = true;
+                        video.onseeked = null;
+                        resolve();
+                    }
+                    return;
+                }
+                setTimeout(() => {
+                    if (!resolved) {
+                        resolved = true;
+                        video.onseeked = null;
+                        resolve();
+                    }
+                }, 1500);
+            });
+        }
+
+        function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        function copyToClipboard(text, btn) {
+            navigator.clipboard.writeText(text).then(() => {
+                const orig = btn.innerHTML;
+                btn.innerHTML = `${ICONS.check} 已复制`;
+                setTimeout(() => btn.innerHTML = orig, 2000);
+            }).catch(() => alert('复制失败'));
+        }
+
+        // 事件绑定
+        convertBtn.addEventListener('click', async function() {
+            if (isProcessing) {
+                stopRequested = true;
+                this.disabled = true;
+                this.innerHTML = `${ICONS.stop} 正在停止...`;
+                setStatus('warn', '正在停止处理...');
+                return;
+            }
+            const file = fileInput.files[0];
+            if (!file) {
+                setStatus('warn', '请选择文件！');
+                return;
+            }
+            const type = file.type;
+            if (type.startsWith('image/')) {
+                videoControls.classList.add('hidden');
+                await processImage(file);
+            } else if (type.startsWith('video/')) {
+                await processVideo(file);
+            } else {
+                setStatus('error', '不支持的文件类型，请上传图片或视频。');
+            }
+        });
+
+        // 命令模式切换
+        cmdModeSelect.addEventListener('change', () => {
+            if (currentMode === 'image' && imageData) {
+                const mode = cmdModeSelect.value;
+                const singleCmd = buildSingleCommand(imageData.charArt, mode);
+                commandList.innerHTML = `
+                    <div class="cmd-block">
+                        <span class="seq-num">#1</span>
+                        <span class="cmd-label">图片字符画</span>
+                        <button class="copy-btn-sm" data-cmd="${encodeURIComponent(singleCmd)}">${ICONS.copy} 复制</button>
+                    </div>
+                `;
+                commandList._allCmds = [singleCmd];
+                bindCopyButtons();
+                setStatus('success', '命令模式已切换，无需重新转换。');
+                setTimeout(() => {
+                    setStatus('info', '命令模式切换完成');
+                }, 3000);
+            } else if (currentMode === 'video' && videoFrameData) {
+                const mode = cmdModeSelect.value;
+                const delay = parseInt(delayInput.value);
+                generateVideoCommands(videoFrameData, mode, delay);
+                setStatus('success', '命令模式已切换，无需重新转换。');
+                setTimeout(() => {
+                    setStatus('info', '命令模式切换完成');
+                }, 3000);
+            } else {
+                setStatus('warn', '请先转换图片或视频再切换模式。');
+            }
+        });
+
+        // 复制全部
+        copyAllBtn.addEventListener('click', () => {
+            let allCmds = commandList._allCmds;
+            if (!allCmds || allCmds.length === 0) {
+                setStatus('warn', '没有命令可复制。');
+                return;
+            }
+            const text = allCmds.join('\n\n');
+            navigator.clipboard.writeText(text).then(() => {
+                setStatus('success', '全部命令已复制！');
+            }).catch(() => {
+                const ta = document.createElement('textarea');
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                ta.remove();
+                setStatus('success', '已复制（旧方法）！');
+            });
+        });
+
+        // 下载
+        downloadBtn.addEventListener('click', () => {
+            let allCmds = commandList._allCmds;
+            if (!allCmds || allCmds.length === 0) {
+                setStatus('warn', '没有命令可下载。');
+                return;
+            }
+            const text = allCmds.join('\n\n');
+            const blob = new Blob([text], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'commands.txt';
+            a.click();
+            URL.revokeObjectURL(url);
+            setStatus('success', '文件已下载！');
+        });
+
+        // 初始状态
+        setStatus('info', '上传图片或视频，点击转换生成。');
+        videoControls.classList.add('hidden');
+        videoPreviewControls.classList.add('hidden');
+    })();
+</script>
+</body>
+</html>
