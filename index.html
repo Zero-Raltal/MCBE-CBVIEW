@@ -191,7 +191,7 @@
          → 
         <svg class="svg-icon" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" fill="currentColor"/></svg>
         Minecraft BE 1.19+ 图片/视频 转 字符画 by ZeroRaltal
-        <small>128×32 | 27色 | Floyd‑Steinberg 抖动 (已优化)</small>
+        <small id="sizeHint">128×32 | 27色 | Floyd‑Steinberg 抖动 (已优化)</small>
     </h1>
 
     <div class="upload-area">
@@ -210,15 +210,15 @@
                 <svg class="svg-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.5" fill="none"/><polyline points="12 6 12 12 16 14" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
                 帧率 (FPS)
             </label>
-            <input type="range" id="fpsSlider" min="1" max="20" value="20" step="1">
-            <span class="slider-value" id="fpsValue">20</span>
+            <input type="range" id="fpsSlider" min="1" max="20" value="10" step="1">
+            <span class="slider-value" id="fpsValue">10</span>
             <span style="font-size:0.8rem; color:#8888aa;">总帧数 = 视频时长 × FPS</span>
         </div>
         <div class="extra-controls">
             <label>
                 <svg class="svg-icon" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.5" fill="none"/><path d="M8 2v4M16 2v4" stroke="currentColor" stroke-width="1.5"/></svg>
                 循环延迟 (tick)：
-                <input type="number" id="delayInput" value="1" min="1" max="20" step="1">
+                <input type="number" id="delayInput" value="2" min="1" max="20" step="1">
             </label>
             <span style="font-size:0.8rem; color:#8888aa;">自动根据 FPS 计算 (20/FPS)，可手动调整</span>
         </div>
@@ -237,6 +237,19 @@
         <span class="slider-value" id="boostValue">1.0</span>
         <span style="font-size:0.8rem; color:#8888aa;">（值越大，颜色越鲜艳）</span>
     </div>
+
+    <div class="mode-selector">
+        <label for="charVersion">
+            <svg class="svg-icon" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" stroke-width="1.5" fill="none"/><path d="M3 9h18M9 21V9" stroke="currentColor" stroke-width="1.5"/></svg>
+            显示版本：
+        </label>
+        <select id="charVersion">
+            <option value="international">国际版 (128 字符/行)</option>
+            <option value="netease">网易版 (192 字符/行)</option>
+        </select>
+        <span style="font-size:0.8rem; color:#8888aa;">切换后需重新转换</span>
+    </div>
+
     <div class="mode-selector">
         <label for="cmdMode">
             <svg class="svg-icon" viewBox="0 0 24 24"><path d="M3 5h18M3 12h18M3 19h18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
@@ -371,21 +384,17 @@
 
         /* ============================================================
            性能优化：颜色查找表 (LUT)
-           ------------------------------------------------------------
-           原算法: 每个像素 * 遍历27色 * 距离计算 = 4096 * 27 = ~11万次
-           优化后: 5bit 量化 (32x32x32) 预计算最近色 -> O(1) 查表
            ============================================================ */
-        const LUT_BITS = 5;                    // 每通道5bit
-        const LUT_SHIFT = 8 - LUT_BITS;        // 右移3位
-        const LUT_SIZE = 1 << (LUT_BITS * 3);  // 32768
-        const LUT_MASK = (1 << LUT_BITS) - 1;  // 31
-        const LUT_R_SHIFT = LUT_BITS * 2;      // 10
-        const LUT_G_SHIFT = LUT_BITS;          // 5
+        const LUT_BITS = 5;
+        const LUT_SHIFT = 8 - LUT_BITS;
+        const LUT_SIZE = 1 << (LUT_BITS * 3);
+        const LUT_MASK = (1 << LUT_BITS) - 1;
+        const LUT_R_SHIFT = LUT_BITS * 2;
+        const LUT_G_SHIFT = LUT_BITS;
 
         let lutIndex = null;
         let lutBoostFactor = null;
 
-        // 预提取调色板到 typed array，避免 LUT 构建时反复访问对象
         const PAL_R = new Float32Array(COLORS.length);
         const PAL_G = new Float32Array(COLORS.length);
         const PAL_B = new Float32Array(COLORS.length);
@@ -400,9 +409,8 @@
         function buildColorLUT(boostFactor) {
             const n = COLORS.length;
             const idx = new Uint8Array(LUT_SIZE);
-            const mid = 4; // 桶中心偏移
+            const mid = 4;
             let p = 0;
-            // 循环顺序与查找索引位段一致: r5<<10 | g5<<5 | b5
             for (let r5 = 0; r5 <= LUT_MASK; r5++) {
                 const r = (r5 << LUT_SHIFT) + mid;
                 for (let g5 = 0; g5 <= LUT_MASK; g5++) {
@@ -438,17 +446,25 @@
         }
 
         /* ============================================================
-           抖动缓冲复用: 避免每帧重新分配 64KB Float32Array
+           工作 canvas + 抖动缓冲复用
            ============================================================ */
         let ditherBuffer = null;
-
-        // 工作 canvas 复用 (willReadFrequently 让 getImageData 走 CPU 内存)
         let workCanvas = null;
+
+        /* ============================================================
+           字符画尺寸（根据版本动态变化）
+           ============================================================ */
+        const CHAR_WIDTH_INTL = 128;
+        const CHAR_WIDTH_NETEASE = 192;
+        const CHAR_HEIGHT = 32;
+        let charWidth = CHAR_WIDTH_INTL;
+        let charHeight = CHAR_HEIGHT;
+
         function getWorkCanvas() {
-            if (!workCanvas) {
+            if (!workCanvas || workCanvas.width !== charWidth || workCanvas.height !== charHeight) {
                 workCanvas = document.createElement('canvas');
-                workCanvas.width = 128;
-                workCanvas.height = 32;
+                workCanvas.width = charWidth;
+                workCanvas.height = charHeight;
                 workCanvas.__ditherCtx = workCanvas.getContext('2d', {
                     willReadFrequently: true
                 });
@@ -460,14 +476,13 @@
            核心: 带 Floyd-Steinberg 抖动的字符画生成 (优化版)
            ============================================================ */
         function canvasToCharArtWithDithering(canvas, boostFactor) {
-            const W = 128, H = 32;
+            const W = charWidth, H = charHeight;
             const ctx = canvas.__ditherCtx ||
                 (canvas.__ditherCtx = canvas.getContext('2d', { willReadFrequently: true }));
             const imgData = ctx.getImageData(0, 0, W, H);
             const data = imgData.data;
             const len = data.length;
 
-            // 复用抖动缓冲，一次性拷贝
             if (!ditherBuffer || ditherBuffer.length !== len) {
                 ditherBuffer = new Float32Array(len);
             }
@@ -493,12 +508,10 @@
                     let g = pixels[idx + 1];
                     let b = pixels[idx + 2];
 
-                    // clamp 抖动产生的越界值
                     if (r < 0) r = 0; else if (r > 255) r = 255;
                     if (g < 0) g = 0; else if (g > 255) g = 255;
                     if (b < 0) b = 0; else if (b > 255) b = 255;
 
-                    // O(1) 查表得到最近颜色
                     const ci = lut[
                         ((r >> LSH) << RSH) |
                         ((g >> LSH) << GSH) |
@@ -513,7 +526,6 @@
                     }
                     charArt += '|';
 
-                    // 误差扩散 (7/16, 3/16, 5/16, 1/16)
                     const er = r - color.rgb[0];
                     const eg = g - color.rgb[1];
                     const eb = b - color.rgb[2];
@@ -605,6 +617,7 @@
         const colorBoostSlider = document.getElementById('colorBoost');
         const boostValueDisplay = document.getElementById('boostValue');
         const cmdModeSelect = document.getElementById('cmdMode');
+        const charVersionSelect = document.getElementById('charVersion');
         const videoControls = document.getElementById('videoControls');
         const fpsSlider = document.getElementById('fpsSlider');
         const fpsValue = document.getElementById('fpsValue');
@@ -689,7 +702,7 @@
             statusMsg.innerHTML = `${iconMap[type] || ICONS.info} ${msg}`;
         }
 
-        // ---------- 图片处理（复用工作 canvas + LUT） ----------
+        // ---------- 图片处理 ----------
         async function processImage(file) {
             if (isProcessing) return;
             isProcessing = true;
@@ -703,9 +716,9 @@
 
                 const canvas = getWorkCanvas();
                 const ctx = canvas.__ditherCtx;
-                ctx.clearRect(0, 0, 128, 32);
+                ctx.clearRect(0, 0, charWidth, charHeight);
                 ctx.imageSmoothingEnabled = true;
-                ctx.drawImage(img, 0, 0, 128, 32);
+                ctx.drawImage(img, 0, 0, charWidth, charHeight);
 
                 const charArt = canvasToCharArtWithDithering(canvas, boost);
                 const singleCmd = buildSingleCommand(charArt, mode);
@@ -734,7 +747,7 @@
             }
         }
 
-        // ---------- 视频处理（去掉 30ms sleep + 复用 canvas + 分帧 yield） ----------
+        // ---------- 视频处理 ----------
         async function processVideo(file) {
             if (isProcessing) return;
             isProcessing = true;
@@ -779,13 +792,12 @@
                     const time = Math.min(i / fps, duration - 0.001);
                     try {
                         await seekVideo(video, time);
-                        ctx.drawImage(video, 0, 0, 128, 32);
+                        ctx.drawImage(video, 0, 0, charWidth, charHeight);
                         allCharArts[i - 1] = canvasToCharArtWithDithering(canvas, boost);
                     } catch (seekErr) {
                         failedFrames++;
                         allCharArts[i - 1] = '';
                     }
-                    // 每 20 帧更新一次 UI，让出主线程
                     if ((i % 20) === 0 || i === totalFrames) {
                         progressFill.style.width = ((i / totalFrames) * 100) + '%';
                         setStatus('clock', `处理帧 ${i}/${totalFrames} (跳过 ${failedFrames} 帧)`);
@@ -916,13 +928,19 @@
             updatePreviewFrame(0);
             frameInfo.textContent = `1 / ${previewFrames.length}`;
             previewProgressFill.style.width = '0%';
+
+            // 每次从 DOM 实时获取，避免上一次 clone 后缓存的旧节点 parentNode 变 null
             const oldPlayBtn = document.getElementById('playPauseBtn');
             const oldLoopBtn = document.getElementById('loopBtn');
+
+            // clone 出全新节点并替换，一次性清掉所有旧的 addEventListener 绑定
             const playBtn = oldPlayBtn.cloneNode(true);
             oldPlayBtn.parentNode.replaceChild(playBtn, oldPlayBtn);
             const loopBtnEl = oldLoopBtn.cloneNode(true);
             oldLoopBtn.parentNode.replaceChild(loopBtnEl, oldLoopBtn);
+
             playBtn.innerHTML = `${ICONS.play} 播放`;
+
             const progBar = document.getElementById('previewProgressBar');
             const progFill = document.getElementById('previewProgressFill');
             const frameInfoEl = document.getElementById('frameInfo');
@@ -989,7 +1007,8 @@
                 updatePreviewFrame(0);
             }
             isPlaying = true;
-            document.getElementById('playPauseBtn').innerHTML = `${ICONS.pause} 暂停`;
+            const pb = document.getElementById('playPauseBtn');
+            if (pb) pb.innerHTML = `${ICONS.pause} 暂停`;
             const speed = parseFloat(document.getElementById('previewSpeedSlider').value);
             const interval = 1000 / (previewFps * speed);
             if (previewTimer) clearInterval(previewTimer);
@@ -1011,7 +1030,8 @@
         function pausePreview() {
             isPlaying = false;
             if (previewTimer) { clearInterval(previewTimer); previewTimer = null; }
-            document.getElementById('playPauseBtn').innerHTML = `${ICONS.play} 播放`;
+            const pb = document.getElementById('playPauseBtn');
+            if (pb) pb.innerHTML = `${ICONS.play} 播放`;
         }
 
         // ---------- 辅助 ----------
@@ -1092,6 +1112,36 @@
             } else {
                 setStatus('error', '不支持的文件类型，请上传图片或视频。');
             }
+        });
+
+        // 版本切换（国际版 / 网易版）
+        charVersionSelect.addEventListener('change', function() {
+            charWidth = (this.value === 'netease') ? CHAR_WIDTH_NETEASE : CHAR_WIDTH_INTL;
+            charHeight = CHAR_HEIGHT;
+
+            // 旧数据是按旧宽度生成的，尺寸变了必须重新转换
+            imageData = null;
+            videoFrameData = null;
+            currentMode = null;
+            commandList.innerHTML = '';
+            commandList._allCmds = null;
+            previewPre.innerHTML = '版本已切换，请重新转换';
+            videoPreviewControls.classList.add('hidden');
+            if (previewTimer) {
+                clearInterval(previewTimer);
+                previewTimer = null;
+            }
+            isPlaying = false;
+
+            // 让工作画布和抖动缓冲失效，下次转换时重建
+            workCanvas = null;
+            ditherBuffer = null;
+
+            const hint = document.getElementById('sizeHint');
+            if (hint) hint.textContent = `${charWidth}×${charHeight} | 27色 | Floyd‑Steinberg 抖动 (已优化)`;
+
+            const label = (this.value === 'netease') ? '网易版 (192 字符/行)' : '国际版 (128 字符/行)';
+            setStatus('info', `已切换到${label}，请重新转换。`);
         });
 
         cmdModeSelect.addEventListener('change', () => {
@@ -1252,6 +1302,7 @@
         function exportBEStructure() {
             const cmdEntries = [];
             if (currentMode === 'image' && imageData) {
+                // 图片：单个循环方块循环刷新（红石控制）
                 cmdEntries.push({ type: 'repeat', cmd: imageData.singleCmd, tickDelay: 0 });
             } else if (currentMode === 'video' && videoFrameData) {
                 const allCharArts = videoFrameData.allCharArts;
@@ -1259,16 +1310,22 @@
                 if (isNaN(delay) || delay < 1) delay = 1;
                 if (delay > 20) delay = 20;
                 const mode = cmdModeSelect.value;
+
+                // ① 第1个：脉冲命令方块，清零 f（无条件、红石控制）
                 cmdEntries.push({
                     type: 'pulse',
                     cmd: 'scoreboard players set f f 0',
                     tickDelay: 0
                 });
+
+                // ② 第2个：循环命令方块，递增 f（无条件、红石控制）
                 cmdEntries.push({
                     type: 'repeat',
                     cmd: 'scoreboard players add f f 1',
                     tickDelay: delay - 1
                 });
+
+                // ③ 链式方块：逐帧条件显示
                 for (let i = 0; i < allCharArts.length; i++) {
                     if (!allCharArts[i]) continue;
                     const singleCmd = buildSingleCommand(allCharArts[i], mode);
@@ -1278,6 +1335,8 @@
                         tickDelay: 0
                     });
                 }
+
+                // ④ 链式方块：越过最后一帧自动归零
                 cmdEntries.push({
                     type: 'chain',
                     cmd: `execute if score f f matches ${allCharArts.length + 1}.. run scoreboard players set f f 0`,
@@ -1324,6 +1383,7 @@
                 else if (e.type === 'repeat') blockName = 'minecraft:repeating_command_block';
                 else blockName = 'minecraft:chain_command_block';
 
+                // auto: chain = 1，pulse/repeat = 0（红石控制）
                 const auto = (e.type === 'chain') ? 1 : 0;
                 const tickDelay = e.tickDelay || 0;
 
