@@ -134,8 +134,10 @@
             display: inline-flex; align-items: center; gap: 4px;
         }
         .download-btn { background: #6a4a3a; }
+        .be-btn { background: #4a6a8a; }
         .copy-btn:hover { background: #4e8a4e; }
         .download-btn:hover { background: #8a6a4a; }
+        .be-btn:hover { background: #5e82a8; }
         .footer { margin-top: 20px; font-size: 0.8rem; color: #555577; }
         .hidden { display: none; }
         .progress-bar {
@@ -189,7 +191,7 @@
          → 
         <svg class="svg-icon" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" fill="currentColor"/></svg>
         Minecraft BE 1.19+ 图片/视频 转 字符画 by ZeroRaltal
-        <small>128×32 | 27色 | Floyd‑Steinberg 抖动</small>
+        <small>128×32 | 27色 | Floyd‑Steinberg 抖动 (已优化)</small>
     </h1>
 
     <div class="upload-area">
@@ -208,15 +210,15 @@
                 <svg class="svg-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.5" fill="none"/><polyline points="12 6 12 12 16 14" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
                 帧率 (FPS)
             </label>
-            <input type="range" id="fpsSlider" min="1" max="20" value="10" step="1">
-            <span class="slider-value" id="fpsValue">10</span>
+            <input type="range" id="fpsSlider" min="1" max="20" value="20" step="1">
+            <span class="slider-value" id="fpsValue">20</span>
             <span style="font-size:0.8rem; color:#8888aa;">总帧数 = 视频时长 × FPS</span>
         </div>
         <div class="extra-controls">
             <label>
                 <svg class="svg-icon" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.5" fill="none"/><path d="M8 2v4M16 2v4" stroke="currentColor" stroke-width="1.5"/></svg>
                 循环延迟 (tick)：
-                <input type="number" id="delayInput" value="2" min="1" max="20" step="1">
+                <input type="number" id="delayInput" value="1" min="1" max="20" step="1">
             </label>
             <span style="font-size:0.8rem; color:#8888aa;">自动根据 FPS 计算 (20/FPS)，可手动调整</span>
         </div>
@@ -233,14 +235,14 @@
         </label>
         <input type="range" id="colorBoost" min="1.0" max="3.0" step="0.1" value="1.0">
         <span class="slider-value" id="boostValue">1.0</span>
-        <span style="font-size:0.8rem; color:#8888aa;">（值越大，颜色越鲜艳</span>
+        <span style="font-size:0.8rem; color:#8888aa;">（值越大，颜色越鲜艳）</span>
     </div>
     <div class="mode-selector">
         <label for="cmdMode">
             <svg class="svg-icon" viewBox="0 0 24 24"><path d="M3 5h18M3 12h18M3 19h18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
             命令模式：
         </label>
-        <select id="cmdMode">3
+        <select id="cmdMode">
             <option value="titleraw">titleraw actionbar (物品栏上方显示)</option>
             <option value="tellraw">tellraw (聊天栏显示)</option>
         </select>
@@ -291,6 +293,10 @@
                     <svg class="svg-icon" viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" fill="currentColor"/></svg>
                     下载为 .txt
                 </button>
+                <button class="be-btn" id="exportBEStructBtn">
+                    <svg class="svg-icon" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linejoin="round"/></svg>
+                    导出 .mcstructure
+                </button>
             </span>
         </label>
         <div id="commandList"></div>
@@ -317,7 +323,6 @@
             refresh: `<svg class="svg-icon svg-icon-sm" viewBox="0 0 24 24"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z" fill="currentColor"/></svg>`,
         };
 
-        // 颜色表
         function hexToRgb(hex) {
             const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
             return result ? [
@@ -364,20 +369,238 @@
             isGray: c.isGray
         }));
 
-        const colorLookup = COLORS.map(c => ({
-            code: c.code,
-            rgb: c.rgb,
-            hex: c.hex,
-            isGray: c.isGray
-        }));
+        /* ============================================================
+           性能优化：颜色查找表 (LUT)
+           ------------------------------------------------------------
+           原算法: 每个像素 * 遍历27色 * 距离计算 = 4096 * 27 = ~11万次
+           优化后: 5bit 量化 (32x32x32) 预计算最近色 -> O(1) 查表
+           ============================================================ */
+        const LUT_BITS = 5;                    // 每通道5bit
+        const LUT_SHIFT = 8 - LUT_BITS;        // 右移3位
+        const LUT_SIZE = 1 << (LUT_BITS * 3);  // 32768
+        const LUT_MASK = (1 << LUT_BITS) - 1;  // 31
+        const LUT_R_SHIFT = LUT_BITS * 2;      // 10
+        const LUT_G_SHIFT = LUT_BITS;          // 5
 
-        // DOM
+        let lutIndex = null;
+        let lutBoostFactor = null;
+
+        // 预提取调色板到 typed array，避免 LUT 构建时反复访问对象
+        const PAL_R = new Float32Array(COLORS.length);
+        const PAL_G = new Float32Array(COLORS.length);
+        const PAL_B = new Float32Array(COLORS.length);
+        const PAL_GRAY = new Uint8Array(COLORS.length);
+        for (let i = 0; i < COLORS.length; i++) {
+            PAL_R[i] = COLORS[i].rgb[0];
+            PAL_G[i] = COLORS[i].rgb[1];
+            PAL_B[i] = COLORS[i].rgb[2];
+            PAL_GRAY[i] = COLORS[i].isGray ? 1 : 0;
+        }
+
+        function buildColorLUT(boostFactor) {
+            const n = COLORS.length;
+            const idx = new Uint8Array(LUT_SIZE);
+            const mid = 4; // 桶中心偏移
+            let p = 0;
+            // 循环顺序与查找索引位段一致: r5<<10 | g5<<5 | b5
+            for (let r5 = 0; r5 <= LUT_MASK; r5++) {
+                const r = (r5 << LUT_SHIFT) + mid;
+                for (let g5 = 0; g5 <= LUT_MASK; g5++) {
+                    const g = (g5 << LUT_SHIFT) + mid;
+                    for (let b5 = 0; b5 <= LUT_MASK; b5++, p++) {
+                        const b = (b5 << LUT_SHIFT) + mid;
+                        const mx = r > g ? (r > b ? r : b) : (g > b ? g : b);
+                        const mn = r < g ? (r < b ? r : b) : (g < b ? g : b);
+                        const isGray = (mx - mn) < 25;
+
+                        let best = 0;
+                        let bestDist = Infinity;
+                        for (let i = 0; i < n; i++) {
+                            const dr = r - PAL_R[i];
+                            const dg = g - PAL_G[i];
+                            const db = b - PAL_B[i];
+                            let d = 0.299 * dr * dr + 0.587 * dg * dg + 0.114 * db * db;
+                            if (PAL_GRAY[i] && !isGray) d *= boostFactor;
+                            if (d < bestDist) { bestDist = d; best = i; }
+                        }
+                        idx[p] = best;
+                    }
+                }
+            }
+            lutIndex = idx;
+            lutBoostFactor = boostFactor;
+        }
+
+        function ensureLUT(boostFactor) {
+            if (lutIndex === null || lutBoostFactor !== boostFactor) {
+                buildColorLUT(boostFactor);
+            }
+        }
+
+        /* ============================================================
+           抖动缓冲复用: 避免每帧重新分配 64KB Float32Array
+           ============================================================ */
+        let ditherBuffer = null;
+
+        // 工作 canvas 复用 (willReadFrequently 让 getImageData 走 CPU 内存)
+        let workCanvas = null;
+        function getWorkCanvas() {
+            if (!workCanvas) {
+                workCanvas = document.createElement('canvas');
+                workCanvas.width = 128;
+                workCanvas.height = 32;
+                workCanvas.__ditherCtx = workCanvas.getContext('2d', {
+                    willReadFrequently: true
+                });
+            }
+            return workCanvas;
+        }
+
+        /* ============================================================
+           核心: 带 Floyd-Steinberg 抖动的字符画生成 (优化版)
+           ============================================================ */
+        function canvasToCharArtWithDithering(canvas, boostFactor) {
+            const W = 128, H = 32;
+            const ctx = canvas.__ditherCtx ||
+                (canvas.__ditherCtx = canvas.getContext('2d', { willReadFrequently: true }));
+            const imgData = ctx.getImageData(0, 0, W, H);
+            const data = imgData.data;
+            const len = data.length;
+
+            // 复用抖动缓冲，一次性拷贝
+            if (!ditherBuffer || ditherBuffer.length !== len) {
+                ditherBuffer = new Float32Array(len);
+            }
+            const pixels = ditherBuffer;
+            pixels.set(data);
+
+            ensureLUT(boostFactor);
+            const lut = lutIndex;
+
+            const LSH = LUT_SHIFT;
+            const RSH = LUT_R_SHIFT;
+            const GSH = LUT_G_SHIFT;
+
+            let charArt = '§l';
+            let lastCode = null;
+            const rowStride = W * 4;
+
+            for (let row = 0; row < H; row++) {
+                const rowOff = row * rowStride;
+                for (let col = 0; col < W; col++) {
+                    const idx = rowOff + col * 4;
+                    let r = pixels[idx];
+                    let g = pixels[idx + 1];
+                    let b = pixels[idx + 2];
+
+                    // clamp 抖动产生的越界值
+                    if (r < 0) r = 0; else if (r > 255) r = 255;
+                    if (g < 0) g = 0; else if (g > 255) g = 255;
+                    if (b < 0) b = 0; else if (b > 255) b = 255;
+
+                    // O(1) 查表得到最近颜色
+                    const ci = lut[
+                        ((r >> LSH) << RSH) |
+                        ((g >> LSH) << GSH) |
+                        (b >> LSH)
+                    ];
+                    const color = COLORS[ci];
+                    const code = color.code;
+
+                    if (code !== lastCode) {
+                        charArt += '§' + code;
+                        lastCode = code;
+                    }
+                    charArt += '|';
+
+                    // 误差扩散 (7/16, 3/16, 5/16, 1/16)
+                    const er = r - color.rgb[0];
+                    const eg = g - color.rgb[1];
+                    const eb = b - color.rgb[2];
+
+                    if (col + 1 < W) {
+                        const n = idx + 4;
+                        pixels[n]     += er * 0.4375;
+                        pixels[n + 1] += eg * 0.4375;
+                        pixels[n + 2] += eb * 0.4375;
+                    }
+                    if (row + 1 < H) {
+                        const nextOff = rowOff + rowStride;
+                        if (col > 0) {
+                            const n = nextOff + (col - 1) * 4;
+                            pixels[n]     += er * 0.1875;
+                            pixels[n + 1] += eg * 0.1875;
+                            pixels[n + 2] += eb * 0.1875;
+                        }
+                        {
+                            const n = nextOff + col * 4;
+                            pixels[n]     += er * 0.3125;
+                            pixels[n + 1] += eg * 0.3125;
+                            pixels[n + 2] += eb * 0.3125;
+                        }
+                        if (col + 1 < W) {
+                            const n = nextOff + (col + 1) * 4;
+                            pixels[n]     += er * 0.0625;
+                            pixels[n + 1] += eg * 0.0625;
+                            pixels[n + 2] += eb * 0.0625;
+                        }
+                    }
+                }
+                if (row < H - 1) {
+                    charArt += '\n';
+                    lastCode = null;
+                }
+            }
+
+            return charArt;
+        }
+
+        function buildSingleCommand(charArt, mode) {
+            let text = charArt;
+            if (mode === 'titleraw') {
+                text += '\n'.repeat(16);
+            }
+            const escaped = text.replace(/\n/g, '\\n');
+            const json = `{"rawtext":[{"text":"${escaped}"}]}`;
+            if (mode === 'tellraw') {
+                return `tellraw @a ${json}`;
+            } else {
+                return `titleraw @a actionbar ${json}`;
+            }
+        }
+
+        function renderPreview(charArt) {
+            let currentColor = '#FFFFFF';
+            const parts = [];
+            let i = 0;
+            while (i < charArt.length) {
+                const ch = charArt[i];
+                if (ch === '§' && i + 1 < charArt.length) {
+                    const code = charArt[i + 1];
+                    const colorObj = COLORS.find(c => c.code === code);
+                    if (colorObj) currentColor = colorObj.hex;
+                    i += 2;
+                    continue;
+                }
+                if (ch === '\n') {
+                    parts.push('\n');
+                    i++;
+                    continue;
+                }
+                parts.push(`<span style="color:${currentColor};">${ch}</span>`);
+                i++;
+            }
+            return parts.join('');
+        }
+
+        // ---------- DOM ----------
         const fileInput = document.getElementById('fileInput');
         const convertBtn = document.getElementById('convertBtn');
         const previewPre = document.getElementById('previewPre');
         const commandList = document.getElementById('commandList');
         const copyAllBtn = document.getElementById('copyAllBtn');
         const downloadBtn = document.getElementById('downloadBtn');
+        const exportBEStructBtn = document.getElementById('exportBEStructBtn');
         const statusMsg = document.getElementById('statusMsg');
         const colorBoostSlider = document.getElementById('colorBoost');
         const boostValueDisplay = document.getElementById('boostValue');
@@ -389,22 +612,18 @@
         const progressFill = document.getElementById('progressFill');
         const videoInfo = document.getElementById('videoInfo');
         const videoPreviewControls = document.getElementById('videoPreviewControls');
-        const playPauseBtn = document.getElementById('playPauseBtn');
         const previewProgressBar = document.getElementById('previewProgressBar');
         const previewProgressFill = document.getElementById('previewProgressFill');
         const frameInfo = document.getElementById('frameInfo');
         const previewSpeedSlider = document.getElementById('previewSpeedSlider');
         const previewSpeedValue = document.getElementById('previewSpeedValue');
-        const loopBtn = document.getElementById('loopBtn');
 
-        // 存储当前处理模式和数据
-        let currentMode = null; // 'image' or 'video'
-        let imageData = null;   // { charArt, singleCmd }
+        let currentMode = null;
+        let imageData = null;
         let videoFrameData = null;
         let isProcessing = false;
         let stopRequested = false;
 
-        // 滑块同步
         colorBoostSlider.addEventListener('input', () => {
             boostValueDisplay.textContent = parseFloat(colorBoostSlider.value).toFixed(1);
         });
@@ -425,7 +644,6 @@
             delayInput.value = val;
         });
 
-        // 文件选择
         fileInput.addEventListener('change', function() {
             const file = this.files[0];
             commandList.innerHTML = '';
@@ -440,7 +658,8 @@
                 previewTimer = null;
             }
             isPlaying = false;
-            playPauseBtn.innerHTML = `${ICONS.play} 播放`;
+            const pb = document.getElementById('playPauseBtn');
+            if (pb) pb.innerHTML = `${ICONS.play} 播放`;
 
             if (!file) {
                 videoControls.classList.add('hidden');
@@ -462,166 +681,15 @@
             }
         });
 
-        // 带抖动的颜色匹配和字符生成
-        function canvasToCharArtWithDithering(canvas, boostFactor) {
-            const W = 128, H = 32;
-            const ctx = canvas.getContext('2d');
-            const imageData = ctx.getImageData(0, 0, W, H);
-            const data = imageData.data; // Uint8ClampedArray
-
-            // 复制像素数据用于抖动修改
-            const pixels = new Float32Array(data.length);
-            for (let i = 0; i < data.length; i++) {
-                pixels[i] = data[i];
-            }
-
-            // 查找最接近的颜色
-            function findClosestColor(r, g, b) {
-                const max = Math.max(r, g, b);
-                const min = Math.min(r, g, b);
-                const isGray = (max - min) < 25;
-
-                let best = null;
-                let minDist = Infinity;
-                for (const c of colorLookup) {
-                    const [cr, cg, cb] = c.rgb;
-                    const dr = r - cr, dg = g - cg, db = b - cb;
-                    let dist = 0.299 * dr * dr + 0.587 * dg * dg + 0.114 * db * db;
-                    if (c.isGray && !isGray) {
-                        dist *= boostFactor;
-                    }
-                    if (dist < minDist) {
-                        minDist = dist;
-                        best = c;
-                    }
-                }
-                return best;
-            }
-
-            // 输出字符画
-            let charArt = '§l';
-            let lastCode = null;
-
-            // Floyd-Steinberg 抖动
-            for (let row = 0; row < H; row++) {
-                for (let col = 0; col < W; col++) {
-                    const idx = (row * W + col) * 4;
-                    const r = pixels[idx];
-                    const g = pixels[idx + 1];
-                    const b = pixels[idx + 2];
-
-                    // 找最近颜色
-                    const closest = findClosestColor(r, g, b);
-                    const [cr, cg, cb] = closest.rgb;
-                    const code = closest.code;
-
-                    // 写入字符
-                    if (code !== lastCode) {
-                        charArt += '§' + code;
-                        lastCode = code;
-                    }
-                    charArt += '|';
-
-                    // 计算误差
-                    const errR = r - cr;
-                    const errG = g - cg;
-                    const errB = b - cb;
-
-                    // 扩散到右侧 (7/16)
-                    if (col + 1 < W) {
-                        const nIdx = idx + 4;
-                        pixels[nIdx] += errR * 7 / 16;
-                        pixels[nIdx + 1] += errG * 7 / 16;
-                        pixels[nIdx + 2] += errB * 7 / 16;
-                    }
-                    // 扩散到左下 (3/16)
-                    if (row + 1 < H && col - 1 >= 0) {
-                        const nIdx = (row + 1) * W * 4 + (col - 1) * 4;
-                        pixels[nIdx] += errR * 3 / 16;
-                        pixels[nIdx + 1] += errG * 3 / 16;
-                        pixels[nIdx + 2] += errB * 3 / 16;
-                    }
-                    // 扩散到下方 (5/16)
-                    if (row + 1 < H) {
-                        const nIdx = (row + 1) * W * 4 + col * 4;
-                        pixels[nIdx] += errR * 5 / 16;
-                        pixels[nIdx + 1] += errG * 5 / 16;
-                        pixels[nIdx + 2] += errB * 5 / 16;
-                    }
-                    // 扩散到右下 (1/16)
-                    if (row + 1 < H && col + 1 < W) {
-                        const nIdx = (row + 1) * W * 4 + (col + 1) * 4;
-                        pixels[nIdx] += errR * 1 / 16;
-                        pixels[nIdx + 1] += errG * 1 / 16;
-                        pixels[nIdx + 2] += errB * 1 / 16;
-                    }
-                }
-                // 行末换行
-                if (row < H - 1) {
-                    charArt += '\n';
-                    lastCode = null;
-                }
-            }
-
-            return charArt;
-        }
-
-        // 构建命令
-        function buildSingleCommand(charArt, mode) {
-            let text = charArt;
-            if (mode === 'titleraw') {
-                text += '\n'.repeat(16);
-            }
-            const escaped = text.replace(/\n/g, '\\n');
-            const json = `{"rawtext":[{"text":"${escaped}"}]}`;
-            if (mode === 'tellraw') {
-                return `tellraw @a ${json}`;
-            } else {
-                return `titleraw @a actionbar ${json}`;
-            }
-        }
-
-        function renderPreview(charArt) {
-            let currentColor = '#FFFFFF';
-            let html = '';
-            let i = 0;
-            while (i < charArt.length) {
-                const ch = charArt[i];
-                if (ch === '§' && i + 1 < charArt.length) {
-                    const code = charArt[i + 1];
-                    const colorObj = COLORS.find(c => c.code === code);
-                    if (colorObj) {
-                        currentColor = colorObj.hex;
-                    }
-                    i += 2;
-                    continue;
-                }
-                if (ch === '\n') {
-                    html += '\n';
-                    i++;
-                    continue;
-                }
-                html += `<span style="color:${currentColor};">${ch}</span>`;
-                i++;
-            }
-            return html;
-        }
-
-        // 状态提示
         function setStatus(type, msg) {
             const iconMap = {
-                info: ICONS.info,
-                success: ICONS.check,
-                error: ICONS.error,
-                warn: ICONS.warn,
-                clock: ICONS.clock,
-                refresh: ICONS.refresh
+                info: ICONS.info, success: ICONS.check, error: ICONS.error,
+                warn: ICONS.warn, clock: ICONS.clock, refresh: ICONS.refresh
             };
-            const icon = iconMap[type] || ICONS.info;
-            statusMsg.innerHTML = `${icon} ${msg}`;
+            statusMsg.innerHTML = `${iconMap[type] || ICONS.info} ${msg}`;
         }
 
-        // 图片处理
+        // ---------- 图片处理（复用工作 canvas + LUT） ----------
         async function processImage(file) {
             if (isProcessing) return;
             isProcessing = true;
@@ -632,12 +700,13 @@
                 const boost = parseFloat(colorBoostSlider.value);
                 const mode = cmdModeSelect.value;
                 const img = await loadImage(file);
-                const canvas = document.createElement('canvas');
-                canvas.width = 128;
-                canvas.height = 32;
-                const ctx = canvas.getContext('2d');
+
+                const canvas = getWorkCanvas();
+                const ctx = canvas.__ditherCtx;
+                ctx.clearRect(0, 0, 128, 32);
                 ctx.imageSmoothingEnabled = true;
                 ctx.drawImage(img, 0, 0, 128, 32);
+
                 const charArt = canvasToCharArtWithDithering(canvas, boost);
                 const singleCmd = buildSingleCommand(charArt, mode);
                 imageData = { charArt, singleCmd };
@@ -665,7 +734,7 @@
             }
         }
 
-        // 视频处理
+        // ---------- 视频处理（去掉 30ms sleep + 复用 canvas + 分帧 yield） ----------
         async function processVideo(file) {
             if (isProcessing) return;
             isProcessing = true;
@@ -693,13 +762,11 @@
                 if (totalFrames < 1) throw new Error('视频时长太短或帧率太低，无有效帧');
                 videoInfo.textContent = `时长 ${duration.toFixed(2)}s | 帧率 ${fps} FPS | 总帧数 ${totalFrames}`;
 
-                const canvas = document.createElement('canvas');
-                canvas.width = 128;
-                canvas.height = 32;
-                const ctx = canvas.getContext('2d');
+                const canvas = getWorkCanvas();
+                const ctx = canvas.__ditherCtx;
                 ctx.imageSmoothingEnabled = true;
 
-                let allCharArts = [];
+                const allCharArts = new Array(totalFrames);
                 let failedFrames = 0;
 
                 for (let i = 1; i <= totalFrames; i++) {
@@ -713,16 +780,17 @@
                     try {
                         await seekVideo(video, time);
                         ctx.drawImage(video, 0, 0, 128, 32);
-                        const charArt = canvasToCharArtWithDithering(canvas, boost);
-                        allCharArts.push(charArt);
+                        allCharArts[i - 1] = canvasToCharArtWithDithering(canvas, boost);
                     } catch (seekErr) {
                         failedFrames++;
-                        allCharArts.push('');
+                        allCharArts[i - 1] = '';
                     }
-                    const progress = (i / totalFrames) * 100;
-                    progressFill.style.width = progress + '%';
-                    setStatus('clock', `处理帧 ${i}/${totalFrames} (跳过 ${failedFrames} 帧)`);
-                    await sleep(30);
+                    // 每 20 帧更新一次 UI，让出主线程
+                    if ((i % 20) === 0 || i === totalFrames) {
+                        progressFill.style.width = ((i / totalFrames) * 100) + '%';
+                        setStatus('clock', `处理帧 ${i}/${totalFrames} (跳过 ${failedFrames} 帧)`);
+                        await new Promise(r => setTimeout(r, 0));
+                    }
                 }
 
                 videoFrameData = {
@@ -755,17 +823,15 @@
             }
         }
 
-        // ---------- 生成视频命令 ----------
         function generateVideoCommands(data, mode, delay) {
             if (!data) return;
-            const { allCharArts, totalFrames, failedFrames } = data;
+            const { allCharArts } = data;
 
             const objectiveCmd = 'scoreboard objectives add f dummy';
             const pulseCmd = 'scoreboard players set f f 0';
             const loopCmd = `scoreboard players add f f 1`;
 
             let allCmds = [];
-
             const headerCmds = [
                 { label: '创建计分板', cmd: objectiveCmd },
                 { label: '脉冲归零', cmd: pulseCmd },
@@ -779,8 +845,7 @@
                     continue;
                 }
                 const singleCmd = buildSingleCommand(charArt, mode);
-                const condCmd = `execute if score f f matches ${i+1} run ${singleCmd}`;
-                chainCmds.push(condCmd);
+                chainCmds.push(`execute if score f f matches ${i+1} run ${singleCmd}`);
             }
 
             let html = '';
@@ -799,11 +864,10 @@
             for (let i = 0; i < chainCmds.length; i++) {
                 const cmd = chainCmds[i];
                 allCmds.push(cmd);
-                const label = `连锁 #${i+1}`;
                 html += `
                     <div class="cmd-block">
                         <span class="seq-num">#${seq}</span>
-                        <span class="cmd-label">${label}</span>
+                        <span class="cmd-label">连锁 #${i+1}</span>
                         <button class="copy-btn-sm" data-cmd="${encodeURIComponent(cmd)}">${ICONS.copy} 复制</button>
                     </div>
                 `;
@@ -823,7 +887,7 @@
             });
         }
 
-        // 视频预览播放器
+        // ---------- 视频预览 ----------
         let previewTimer = null;
         let currentFrameIndex = 0;
         let isPlaying = false;
@@ -852,38 +916,28 @@
             updatePreviewFrame(0);
             frameInfo.textContent = `1 / ${previewFrames.length}`;
             previewProgressFill.style.width = '0%';
-            playPauseBtn.innerHTML = `${ICONS.play} 播放`;
-            // 重新绑定事件
-            const newPlayBtn = playPauseBtn.cloneNode(true);
-            playPauseBtn.parentNode.replaceChild(newPlayBtn, playPauseBtn);
-            const newLoopBtn = loopBtn.cloneNode(true);
-            loopBtn.parentNode.replaceChild(newLoopBtn, loopBtn);
-
-            const playBtn = document.getElementById('playPauseBtn');
-            const loopBtnEl = document.getElementById('loopBtn');
+            const oldPlayBtn = document.getElementById('playPauseBtn');
+            const oldLoopBtn = document.getElementById('loopBtn');
+            const playBtn = oldPlayBtn.cloneNode(true);
+            oldPlayBtn.parentNode.replaceChild(playBtn, oldPlayBtn);
+            const loopBtnEl = oldLoopBtn.cloneNode(true);
+            oldLoopBtn.parentNode.replaceChild(loopBtnEl, oldLoopBtn);
+            playBtn.innerHTML = `${ICONS.play} 播放`;
             const progBar = document.getElementById('previewProgressBar');
             const progFill = document.getElementById('previewProgressFill');
             const frameInfoEl = document.getElementById('frameInfo');
             const speedSlider = document.getElementById('previewSpeedSlider');
             const speedVal = document.getElementById('previewSpeedValue');
 
-            window._playBtn = playBtn;
-            window._progFill = progFill;
-            window._frameInfo = frameInfoEl;
-
             playBtn.addEventListener('click', function() {
-                if (isPlaying) {
-                    pausePreview();
-                } else {
-                    playPreview();
-                }
+                if (isPlaying) pausePreview();
+                else playPreview();
             });
 
             let isDraggingPreview = false;
-            progBar.addEventListener('mousedown', function(e) {
-                isDraggingPreview = true;
+            function seekPreviewAt(clientX) {
                 const rect = progBar.getBoundingClientRect();
-                const x = (e.clientX - rect.left) / rect.width;
+                const x = (clientX - rect.left) / rect.width;
                 const idx = Math.floor(x * previewFrames.length);
                 if (idx >= 0 && idx < previewFrames.length) {
                     currentFrameIndex = idx;
@@ -891,37 +945,25 @@
                     frameInfoEl.textContent = `${idx+1} / ${previewFrames.length}`;
                     progFill.style.width = (idx / (previewFrames.length - 1)) * 100 + '%';
                 }
+            }
+            progBar.addEventListener('mousedown', function(e) {
+                isDraggingPreview = true;
+                seekPreviewAt(e.clientX);
             });
             window.addEventListener('mousemove', function(e) {
-                if (isDraggingPreview) {
-                    const rect = progBar.getBoundingClientRect();
-                    const x = (e.clientX - rect.left) / rect.width;
-                    const idx = Math.floor(x * previewFrames.length);
-                    if (idx >= 0 && idx < previewFrames.length) {
-                        currentFrameIndex = idx;
-                        updatePreviewFrame(idx);
-                        frameInfoEl.textContent = `${idx+1} / ${previewFrames.length}`;
-                        progFill.style.width = (idx / (previewFrames.length - 1)) * 100 + '%';
-                    }
-                }
+                if (isDraggingPreview) seekPreviewAt(e.clientX);
             });
             window.addEventListener('mouseup', function() {
                 if (isDraggingPreview) {
                     isDraggingPreview = false;
-                    if (isPlaying) {
-                        pausePreview();
-                        playPreview();
-                    }
+                    if (isPlaying) { pausePreview(); playPreview(); }
                 }
             });
 
             speedSlider.addEventListener('input', function() {
                 const val = parseFloat(this.value);
                 speedVal.textContent = val.toFixed(1) + 'x';
-                if (isPlaying) {
-                    pausePreview();
-                    playPreview();
-                }
+                if (isPlaying) { pausePreview(); playPreview(); }
             });
 
             loopBtnEl.addEventListener('click', function() {
@@ -933,16 +975,11 @@
 
         function updatePreviewFrame(index) {
             if (index < 0 || index >= previewFrames.length) return;
-            const charArt = previewFrames[index];
-            previewPre.innerHTML = renderPreview(charArt);
+            previewPre.innerHTML = renderPreview(previewFrames[index]);
             const progFill = document.getElementById('previewProgressFill');
-            if (progFill) {
-                progFill.style.width = (index / (previewFrames.length - 1)) * 100 + '%';
-            }
+            if (progFill) progFill.style.width = (index / (previewFrames.length - 1)) * 100 + '%';
             const frameInfoEl = document.getElementById('frameInfo');
-            if (frameInfoEl) {
-                frameInfoEl.textContent = `${index+1} / ${previewFrames.length}`;
-            }
+            if (frameInfoEl) frameInfoEl.textContent = `${index+1} / ${previewFrames.length}`;
         }
 
         function playPreview() {
@@ -973,14 +1010,11 @@
 
         function pausePreview() {
             isPlaying = false;
-            if (previewTimer) {
-                clearInterval(previewTimer);
-                previewTimer = null;
-            }
+            if (previewTimer) { clearInterval(previewTimer); previewTimer = null; }
             document.getElementById('playPauseBtn').innerHTML = `${ICONS.play} 播放`;
         }
 
-        // 辅助函数
+        // ---------- 辅助 ----------
         function loadImage(file) {
             return new Promise((resolve, reject) => {
                 const reader = new FileReader();
@@ -1001,54 +1035,33 @@
                 const video = document.createElement('video');
                 video.preload = 'auto';
                 video.muted = true;
-                video.onloadedmetadata = () => {
-                    resolve(video);
-                };
-                video.onerror = () => {
-                    URL.revokeObjectURL(url);
-                    reject(new Error('视频加载失败'));
-                };
+                video.playsInline = true;
+                video.onloadedmetadata = () => resolve(video);
+                video.onerror = () => { URL.revokeObjectURL(url); reject(new Error('视频加载失败')); };
                 video.src = url;
             });
         }
 
         function seekVideo(video, time) {
             return new Promise((resolve) => {
-                if (Math.abs(video.currentTime - time) < 0.01) {
-                    resolve();
-                    return;
-                }
+                if (Math.abs(video.currentTime - time) < 0.005) { resolve(); return; }
                 let resolved = false;
-                const onSeeked = () => {
+                const done = () => {
                     if (!resolved) {
                         resolved = true;
                         video.onseeked = null;
                         resolve();
                     }
                 };
-                video.onseeked = onSeeked;
+                video.onseeked = done;
                 try {
                     video.currentTime = time;
                 } catch (e) {
-                    if (!resolved) {
-                        resolved = true;
-                        video.onseeked = null;
-                        resolve();
-                    }
+                    done();
                     return;
                 }
-                setTimeout(() => {
-                    if (!resolved) {
-                        resolved = true;
-                        video.onseeked = null;
-                        resolve();
-                    }
-                }, 1500);
+                setTimeout(done, 1200);
             });
-        }
-
-        function sleep(ms) {
-            return new Promise(resolve => setTimeout(resolve, ms));
         }
 
         function copyToClipboard(text, btn) {
@@ -1059,7 +1072,7 @@
             }).catch(() => alert('复制失败'));
         }
 
-        // 事件绑定
+        // ---------- 事件 ----------
         convertBtn.addEventListener('click', async function() {
             if (isProcessing) {
                 stopRequested = true;
@@ -1069,10 +1082,7 @@
                 return;
             }
             const file = fileInput.files[0];
-            if (!file) {
-                setStatus('warn', '请选择文件！');
-                return;
-            }
+            if (!file) { setStatus('warn', '请选择文件！'); return; }
             const type = file.type;
             if (type.startsWith('image/')) {
                 videoControls.classList.add('hidden');
@@ -1084,11 +1094,10 @@
             }
         });
 
-        // 命令模式切换
         cmdModeSelect.addEventListener('change', () => {
             if (currentMode === 'image' && imageData) {
-                const mode = cmdModeSelect.value;
-                const singleCmd = buildSingleCommand(imageData.charArt, mode);
+                const singleCmd = buildSingleCommand(imageData.charArt, cmdModeSelect.value);
+                imageData.singleCmd = singleCmd;
                 commandList.innerHTML = `
                     <div class="cmd-block">
                         <span class="seq-num">#1</span>
@@ -1099,29 +1108,19 @@
                 commandList._allCmds = [singleCmd];
                 bindCopyButtons();
                 setStatus('success', '命令模式已切换，无需重新转换。');
-                setTimeout(() => {
-                    setStatus('info', '命令模式切换完成');
-                }, 3000);
+                setTimeout(() => setStatus('info', '命令模式切换完成'), 3000);
             } else if (currentMode === 'video' && videoFrameData) {
-                const mode = cmdModeSelect.value;
-                const delay = parseInt(delayInput.value);
-                generateVideoCommands(videoFrameData, mode, delay);
+                generateVideoCommands(videoFrameData, cmdModeSelect.value, parseInt(delayInput.value));
                 setStatus('success', '命令模式已切换，无需重新转换。');
-                setTimeout(() => {
-                    setStatus('info', '命令模式切换完成');
-                }, 3000);
+                setTimeout(() => setStatus('info', '命令模式切换完成'), 3000);
             } else {
                 setStatus('warn', '请先转换图片或视频再切换模式。');
             }
         });
 
-        // 复制全部
         copyAllBtn.addEventListener('click', () => {
-            let allCmds = commandList._allCmds;
-            if (!allCmds || allCmds.length === 0) {
-                setStatus('warn', '没有命令可复制。');
-                return;
-            }
+            const allCmds = commandList._allCmds;
+            if (!allCmds || allCmds.length === 0) { setStatus('warn', '没有命令可复制。'); return; }
             const text = allCmds.join('\n\n');
             navigator.clipboard.writeText(text).then(() => {
                 setStatus('success', '全部命令已复制！');
@@ -1136,13 +1135,9 @@
             });
         });
 
-        // 下载
         downloadBtn.addEventListener('click', () => {
-            let allCmds = commandList._allCmds;
-            if (!allCmds || allCmds.length === 0) {
-                setStatus('warn', '没有命令可下载。');
-                return;
-            }
+            const allCmds = commandList._allCmds;
+            if (!allCmds || allCmds.length === 0) { setStatus('warn', '没有命令可下载。'); return; }
             const text = allCmds.join('\n\n');
             const blob = new Blob([text], { type: 'text/plain' });
             const url = URL.createObjectURL(blob);
@@ -1154,7 +1149,269 @@
             setStatus('success', '文件已下载！');
         });
 
-        // 初始状态
+        /* ==================== 基岩版 .mcstructure 导出 ==================== */
+        function randomName() {
+            const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+            let s = '';
+            for (let i = 0; i < 4; i++) s += chars[Math.floor(Math.random() * chars.length)];
+            return s;
+        }
+
+        function bPutU16(a, v) { a.push(v & 0xFF, (v >> 8) & 0xFF); }
+        function bPutI32(a, v) { a.push(v & 0xFF, (v >>> 8) & 0xFF, (v >>> 16) & 0xFF, (v >>> 24) & 0xFF); }
+        function bPutStr(a, s) {
+            const b = new TextEncoder().encode(s);
+            bPutU16(a, b.length);
+            for (let i = 0; i < b.length; i++) a.push(b[i]);
+        }
+        function bPutTag(a, type, name, val) {
+            a.push(type);
+            if (type === 0) return;
+            bPutStr(a, name);
+            bPutVal(a, type, val);
+        }
+        function bPutVal(a, type, val) {
+            switch (type) {
+                case 1: a.push(val & 0xFF); break;
+                case 2: bPutU16(a, val); break;
+                case 3: bPutI32(a, val); break;
+                case 4: {
+                    const dv = new DataView(new ArrayBuffer(8));
+                    dv.setBigInt64(0, BigInt(val), true);
+                    const u = new Uint8Array(dv.buffer);
+                    for (let i = 0; i < 8; i++) a.push(u[i]);
+                    break;
+                }
+                case 5: {
+                    const dv = new DataView(new ArrayBuffer(4));
+                    dv.setFloat32(0, val, true);
+                    const u = new Uint8Array(dv.buffer);
+                    for (let i = 0; i < 4; i++) a.push(u[i]);
+                    break;
+                }
+                case 6: {
+                    const dv = new DataView(new ArrayBuffer(8));
+                    dv.setFloat64(0, val, true);
+                    const u = new Uint8Array(dv.buffer);
+                    for (let i = 0; i < 8; i++) a.push(u[i]);
+                    break;
+                }
+                case 7: bPutI32(a, val.length); for (let i = 0; i < val.length; i++) a.push(val[i] & 0xFF); break;
+                case 8: bPutStr(a, val); break;
+                case 9: a.push(val.itemType); bPutI32(a, val.items.length); for (const it of val.items) bPutVal(a, val.itemType, it); break;
+                case 10: for (const t of val) bPutTag(a, t.type, t.name, t.value); a.push(0); break;
+                case 11: bPutI32(a, val.length); for (const v of val) bPutI32(a, v); break;
+            }
+        }
+        function bSerializeBE(root) {
+            const a = [];
+            bPutTag(a, 10, '', root);
+            return new Uint8Array(a);
+        }
+
+        const B_LAYER_W = 8, B_LAYER_D = 8;
+        const B_PER_LAYER = B_LAYER_W * B_LAYER_D;
+
+        function bePosOf(idx) {
+            const layer = Math.floor(idx / B_PER_LAYER);
+            const within = idx % B_PER_LAYER;
+            const row = Math.floor(within / B_LAYER_W);
+            const col = within % B_LAYER_W;
+            const reverse = (layer % 2 === 1);
+            let z, x;
+            if (!reverse) {
+                z = row;
+                x = (row % 2 === 0) ? col : (B_LAYER_W - 1 - col);
+            } else {
+                z = B_LAYER_D - 1 - row;
+                x = (row % 2 === 0) ? col : (B_LAYER_W - 1 - col);
+            }
+            return { x, y: layer, z };
+        }
+        function beFacingOf(a, b) {
+            if (b.y > a.y) return 'up';
+            if (b.y < a.y) return 'down';
+            if (b.x > a.x) return 'east';
+            if (b.x < a.x) return 'west';
+            if (b.z > a.z) return 'south';
+            if (b.z < a.z) return 'north';
+            return 'up';
+        }
+        function facingToBE(f) {
+            switch (f) {
+                case 'down': return 0;
+                case 'up': return 1;
+                case 'north': return 2;
+                case 'south': return 3;
+                case 'west': return 4;
+                case 'east': return 5;
+                default: return 1;
+            }
+        }
+
+        function exportBEStructure() {
+            const cmdEntries = [];
+            if (currentMode === 'image' && imageData) {
+                cmdEntries.push({ type: 'repeat', cmd: imageData.singleCmd, tickDelay: 0 });
+            } else if (currentMode === 'video' && videoFrameData) {
+                const allCharArts = videoFrameData.allCharArts;
+                let delay = parseInt(delayInput.value);
+                if (isNaN(delay) || delay < 1) delay = 1;
+                if (delay > 20) delay = 20;
+                const mode = cmdModeSelect.value;
+                cmdEntries.push({
+                    type: 'pulse',
+                    cmd: 'scoreboard players set f f 0',
+                    tickDelay: 0
+                });
+                cmdEntries.push({
+                    type: 'repeat',
+                    cmd: 'scoreboard players add f f 1',
+                    tickDelay: delay - 1
+                });
+                for (let i = 0; i < allCharArts.length; i++) {
+                    if (!allCharArts[i]) continue;
+                    const singleCmd = buildSingleCommand(allCharArts[i], mode);
+                    cmdEntries.push({
+                        type: 'chain',
+                        cmd: `execute if score f f matches ${i + 1} run ${singleCmd}`,
+                        tickDelay: 0
+                    });
+                }
+                cmdEntries.push({
+                    type: 'chain',
+                    cmd: `execute if score f f matches ${allCharArts.length + 1}.. run scoreboard players set f f 0`,
+                    tickDelay: 0
+                });
+            } else {
+                alert('请先转换图片或视频，再导出结构。');
+                return;
+            }
+            if (cmdEntries.length === 0) { alert('没有可导出的命令方块。'); return; }
+
+            const total = cmdEntries.length;
+            const layers = Math.ceil(total / B_PER_LAYER);
+            const sizeX = B_LAYER_W, sizeY = layers, sizeZ = B_LAYER_D;
+            const totalBlocks = sizeX * sizeY * sizeZ;
+            const blockIndices = new Array(totalBlocks).fill(0);
+            const blockPositionData = new Map();
+
+            const palette = [];
+            const paletteMap = new Map();
+            function getPaletteIdx(name, states) {
+                const key = name + '|' + JSON.stringify(states);
+                if (paletteMap.has(key)) return paletteMap.get(key);
+                palette.push({ name, states, version: 17959425 });
+                const i = palette.length - 1;
+                paletteMap.set(key, i);
+                return i;
+            }
+            getPaletteIdx('minecraft:air', {});
+
+            for (let i = 0; i < total; i++) {
+                const p = bePosOf(i);
+                const within = i % B_PER_LAYER;
+                const isLastOfLayer = (within === B_PER_LAYER - 1);
+                let facingJava;
+                if (isLastOfLayer) facingJava = 'up';
+                else if (i === total - 1) facingJava = 'east';
+                else facingJava = beFacingOf(p, bePosOf(i + 1));
+                const facingDir = facingToBE(facingJava);
+
+                const e = cmdEntries[i];
+                let blockName;
+                if (e.type === 'pulse') blockName = 'minecraft:command_block';
+                else if (e.type === 'repeat') blockName = 'minecraft:repeating_command_block';
+                else blockName = 'minecraft:chain_command_block';
+
+                const auto = (e.type === 'chain') ? 1 : 0;
+                const tickDelay = e.tickDelay || 0;
+
+                const stateIdx = getPaletteIdx(blockName, {
+                    facing_direction: facingDir,
+                    conditional_bit: 0
+                });
+                const flatIdx = p.x * sizeY * sizeZ + p.y * sizeZ + p.z;
+                blockIndices[flatIdx] = stateIdx;
+
+                blockPositionData.set(String(flatIdx), [
+                    { name: 'block_entity_data', type: 10, value: [
+                        { name: 'id', type: 8, value: 'CommandBlock' },
+                        { name: 'Command', type: 8, value: e.cmd },
+                        { name: 'CustomName', type: 8, value: '' },
+                        { name: 'ExecuteOnFirstTick', type: 1, value: 0 },
+                        { name: 'LPCommandMode', type: 3, value: 0 },
+                        { name: 'LPCondionalMode', type: 1, value: 0 },
+                        { name: 'LPRedstoneMode', type: 1, value: 0 },
+                        { name: 'LastExecution', type: 4, value: -1 },
+                        { name: 'LastOutput', type: 8, value: '' },
+                        { name: 'LastOutputParams', type: 9, value: { itemType: 8, items: [] } },
+                        { name: 'SuccessCount', type: 3, value: 0 },
+                        { name: 'TickDelay', type: 3, value: tickDelay },
+                        { name: 'TrackOutput', type: 1, value: 1 },
+                        { name: 'Version', type: 3, value: 34 },
+                        { name: 'auto', type: 1, value: auto },
+                        { name: 'conditionalMode', type: 1, value: 0 },
+                        { name: 'conditionMet', type: 1, value: 0 },
+                        { name: 'powered', type: 1, value: 0 }
+                    ]}
+                ]);
+            }
+
+            const paletteEntries = palette.map(e => [
+                { name: 'name', type: 8, value: e.name },
+                { name: 'states', type: 10, value: Object.entries(e.states).map(([k, v]) => ({
+                    name: k,
+                    type: Number.isInteger(v) ? 3 : 5,
+                    value: v
+                })) },
+                { name: 'version', type: 3, value: e.version }
+            ]);
+
+            const bpEntries = [];
+            for (const [k, v] of blockPositionData) {
+                bpEntries.push({ name: k, type: 10, value: v });
+            }
+
+            const structureTag = [
+                { name: 'block_indices', type: 9, value: { itemType: 9, items: [
+                    { itemType: 3, items: blockIndices },
+                    { itemType: 3, items: new Array(totalBlocks).fill(-1) }
+                ] } },
+                { name: 'entities', type: 9, value: { itemType: 10, items: [] } },
+                { name: 'palette', type: 10, value: [
+                    { name: 'default', type: 10, value: [
+                        { name: 'block_palette', type: 9, value: { itemType: 10, items: paletteEntries } },
+                        { name: 'block_position_data', type: 10, value: bpEntries }
+                    ] }
+                ] }
+            ];
+
+            const root = [
+                { name: 'format_version', type: 3, value: 1 },
+                { name: 'size', type: 9, value: { itemType: 3, items: [sizeX, sizeY, sizeZ] } },
+                { name: 'structure', type: 10, value: structureTag },
+                { name: 'structure_world_origin', type: 9, value: { itemType: 3, items: [0, 0, 0] } }
+            ];
+
+            const bytes = bSerializeBE(root);
+            const blob = new Blob([bytes], { type: 'application/octet-stream' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = randomName() + '.mcstructure';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            setStatus('success', `结构导出成功！共 ${total} 个命令方块，尺寸 ${sizeX}×${sizeY}×${sizeZ}。`);
+        }
+
+        exportBEStructBtn.addEventListener('click', exportBEStructure);
+
+        /* ==================== 基岩版结构导出 END ==================== */
+
         setStatus('info', '上传图片或视频，点击转换生成。');
         videoControls.classList.add('hidden');
         videoPreviewControls.classList.add('hidden');
