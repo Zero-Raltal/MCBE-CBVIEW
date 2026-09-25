@@ -257,7 +257,7 @@ input[type="number"]:focus{outline:none;border-color:var(--accent-border)}
         <div class="setting-control">
           <select id="charVersion">
             <option value="international">国际版 (128 字符/行)</option>
-            <option value="netease">网易版 (192 字符/行 + 32 空格缩进)</option>
+            <option value="netease">网易版 (192 字符/行)</option>
           </select>
         </div>
       </div>
@@ -441,7 +441,6 @@ input[type="number"]:focus{outline:none;border-color:var(--accent-border)}
     const CHAR_WIDTH_INTL=128,CHAR_WIDTH_NETEASE=192,CHAR_HEIGHT=32;
     let charWidth=CHAR_WIDTH_INTL,charHeight=CHAR_HEIGHT;
 
-    // 网易版每行前缀：32 个空格
     const NETEASE_LINE_PREFIX = ' '.repeat(20);
 
     function getWorkCanvas(){
