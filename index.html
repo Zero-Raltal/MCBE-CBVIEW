@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>字符画生成器 · Minecraft BE by ZeroRaltal</title>
+<script src="https://cdn.jsdelivr.net/npm/mp4box@0.5.2/dist/mp4box.all.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box}
 :root{
@@ -102,7 +103,6 @@ input[type="number"]:focus{outline:none;border-color:var(--accent-border)}
 .info-row{font-size:11.5px;color:var(--text-mute);font-family:var(--font-mono);white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis}
 
-/* ==================== 预览区：16:9 拉伸铺满，无滚动条 ==================== */
 .preview-box{
   position: relative;
   background:#090b0e;
@@ -122,7 +122,7 @@ input[type="number"]:focus{outline:none;border-color:var(--accent-border)}
   font-family: var(--font-mono);
   line-height:1;
   white-space:pre;
-  font-size:12px;                /* JS 覆盖 */
+  font-size:12px;
   color: var(--text-dim);
   will-change: transform;
 }
@@ -591,8 +591,6 @@ input[type="number"]:focus{outline:none;border-color:var(--accent-border)}
 
     /* ============================================================
        预览自适应：16:9 容器内文字同时铺满宽高（允许非等比拉伸）
-       - font-size 决定水平方向刚好填满
-       - scaleY 补偿垂直方向，让内容恰好铺满高度
        ============================================================ */
     let _fitCacheKey = '';
     let _charWidthRatio = null;
@@ -625,7 +623,6 @@ input[type="number"]:focus{outline:none;border-color:var(--accent-border)}
     function fitPreviewFontSize(){
         if(!previewPre || !previewBox) return;
 
-        // 占位符状态：恢复默认
         if(previewPre.classList.contains('placeholder')){
             previewPre.style.fontSize = '';
             previewPre.style.lineHeight = '';
@@ -651,7 +648,6 @@ input[type="number"]:focus{outline:none;border-color:var(--accent-border)}
 
         const ratio = measureCharWidthRatio();
 
-        // 先让宽度刚好铺满：fontSize = availW / (cols * charRatio)
         let fontSize = availW / cols / ratio;
         if(!isFinite(fontSize) || fontSize <= 0) fontSize = 12;
         if(fontSize < 0.5)  fontSize = 0.5;
@@ -660,7 +656,6 @@ input[type="number"]:focus{outline:none;border-color:var(--accent-border)}
         previewPre.style.fontSize = fontSize + 'px';
         previewPre.style.lineHeight = '1';
 
-        // 垂直方向拉伸：让 rows 行 × fontSize 的高度铺满 availH
         const naturalH = rows * fontSize;
         let scaleY = availH / naturalH;
         if(!isFinite(scaleY) || scaleY <= 0) scaleY = 1;
@@ -813,6 +808,199 @@ input[type="number"]:focus{outline:none;border-color:var(--accent-border)}
         }
     }
 
+    /* ================================================================
+       WebCodecs 快速抽帧（仅用于视频转换加速；失败自动回退到 seek 模式）
+       ================================================================ */
+    function hasWebCodecs(){
+        return typeof VideoDecoder !== 'undefined'
+            && typeof EncodedVideoChunk !== 'undefined';
+    }
+    function isMP4Like(file){
+        return /video\/mp4|video\/quicktime/.test(file.type || '')
+            || /\.(mp4|m4v|mov)$/i.test(file.name || '');
+    }
+
+    function extractCodecDescription(mp4, trackId){
+        try{
+            const trak = mp4.getTrackById(trackId);
+            for(const entry of trak.mdia.minf.stbl.stsd.entries){
+                const box = entry.avcC || entry.hvcC || entry.vpcC || entry.av1C;
+                if(box){
+                    const stream = new DataStream(undefined, 0, DataStream.BIG_ENDIAN);
+                    box.write(stream);
+                    return new Uint8Array(stream.buffer, 8);
+                }
+            }
+        }catch(e){
+            console.warn('提取 codec description 失败:', e);
+        }
+        return null;
+    }
+
+    async function extractFramesWebCodecs(file, targetFps, ditherStrength, hooks){
+        hooks = hooks || {};
+        if(typeof MP4Box === 'undefined') throw new Error('MP4Box 未加载');
+        if(!hasWebCodecs()) throw new Error('浏览器不支持 WebCodecs');
+
+        const arrayBuf = await file.arrayBuffer();
+        arrayBuf.fileStart = 0;
+
+        const mp4 = MP4Box.createFile();
+        const samples = [];
+        let track = null;
+        let parseError = null;
+
+        mp4.onError = (e) => { parseError = e; };
+        mp4.onReady = (info) => {
+            track = info.videoTracks && info.videoTracks[0];
+            if(!track) return;
+            mp4.setExtractionOptions(track.id, null, { nbSamples: Infinity });
+            mp4.start();
+        };
+        mp4.onSamples = (id, user, list) => {
+            for(let i = 0; i < list.length; i++) samples.push(list[i]);
+        };
+
+        mp4.appendBuffer(arrayBuf);
+        mp4.flush();
+
+        if(parseError) throw new Error('MP4 解析失败');
+        if(!track) throw new Error('未能解析视频轨道（可能不是 MP4 容器）');
+        if(samples.length === 0) throw new Error('视频没有可解码的样本');
+
+        const description = extractCodecDescription(mp4, track.id);
+        const timescale   = track.timescale;
+        const durationSec = track.duration / timescale;
+        if(!durationSec || durationSec <= 0) throw new Error('无法获取视频时长');
+
+        const totalFrames = Math.max(1, Math.floor(durationSec * targetFps));
+
+        const targetsUs  = new Float64Array(totalFrames);
+        const durationUs = durationSec * 1e6;
+        for(let i = 0; i < totalFrames; i++){
+            targetsUs[i] = Math.min(((i + 1) / targetFps) * 1e6, durationUs - 1);
+        }
+
+        const canvas = getWorkCanvas();
+        const ctx    = canvas.__ditherCtx;
+        ctx.imageSmoothingEnabled = true;
+        // 与 seek 模式保持一致的缩放质量，避免 mipmap 平均造成颜色坍塌
+        ctx.imageSmoothingQuality = 'low';
+
+        const results = new Array(totalFrames).fill('');
+        let nextTarget   = 0;
+        let failedFrames = 0;
+        let firstFrameSent = false;
+        let lastReported = 0;
+
+        await new Promise((resolve, reject) => {
+            let settled = false;
+            const settle = (err) => {
+                if(settled) return;
+                settled = true;
+                err ? reject(err) : resolve();
+            };
+
+            const decoder = new VideoDecoder({
+                output: (frame) => {
+                    try{
+                        if(!firstFrameSent && hooks.onFirstFrame){
+                            firstFrameSent = true;
+                            try{ hooks.onFirstFrame(frame); }catch(_){}
+                        }
+
+                        if(nextTarget >= totalFrames) return;
+                        const ptsUs = frame.timestamp;
+
+                        // 该帧早于下一个目标时间点 → 跳过
+                        if(targetsUs[nextTarget] > ptsUs) return;
+
+                        // 用这一帧满足所有尚未覆盖、且时间点 <= ptsUs 的目标
+                        ctx.drawImage(frame, 0, 0, charWidth, charHeight);
+                        const art = canvasToCharArtWithDithering(canvas, ditherStrength);
+                        while(nextTarget < totalFrames && targetsUs[nextTarget] <= ptsUs){
+                            results[nextTarget] = art;
+                            nextTarget++;
+                        }
+
+                        if(hooks.onProgress && (nextTarget - lastReported >= 10 || nextTarget >= totalFrames)){
+                            lastReported = nextTarget;
+                            hooks.onProgress(nextTarget, totalFrames);
+                        }
+
+                        if(nextTarget >= totalFrames && !settled){
+                            try{ decoder.close(); }catch(_){}
+                            settle();
+                        }
+                    }catch(e){
+                        settle(e);
+                    }finally{
+                        try{ frame.close(); }catch(_){}
+                    }
+                },
+                error: (e) => settle(e instanceof Error ? e : new Error('VideoDecoder 错误'))
+            });
+
+            try{
+                // 不指定 hardwareAcceleration，让浏览器走与 <video> 更接近的路径
+                decoder.configure({
+                    codec:       track.codec,
+                    codedWidth:  track.video.width,
+                    codedHeight: track.video.height,
+                    description: description || undefined
+                });
+            }catch(e){
+                settle(new Error('VideoDecoder 配置失败: ' + e.message));
+                return;
+            }
+
+            (async () => {
+                try{
+                    for(let i = 0; i < samples.length; i++){
+                        if(settled) break;
+                        if(hooks.isCancelled && hooks.isCancelled()) break;
+                        if(decoder.state !== 'configured') break;
+
+                        const s = samples[i];
+                        const cts = (s.cts !== undefined) ? s.cts : (s.dts + (s.cts_offset || 0));
+                        const chunk = new EncodedVideoChunk({
+                            type:     s.is_sync ? 'key' : 'delta',
+                            timestamp: (cts * 1e6) / s.timescale,
+                            duration:  (s.duration * 1e6) / s.timescale,
+                            data:      s.data
+                        });
+                        try{ decoder.decode(chunk); }
+                        catch(_){ failedFrames++; }
+
+                        // 背压：解码队列太长时让出主线程
+                        if(decoder.decodeQueueSize > 24){
+                            await new Promise(r => setTimeout(r, 0));
+                        }
+                        if((i & 31) === 0){
+                            await new Promise(r => setTimeout(r, 0));
+                        }
+                    }
+
+                    if(!settled && decoder.state === 'configured'){
+                        try{ await decoder.flush(); }catch(_){}
+                    }
+
+                    // 数据不足时用最后一帧补齐
+                    if(nextTarget < totalFrames){
+                        const last = nextTarget > 0 ? results[nextTarget - 1] : '';
+                        for(let i = nextTarget; i < totalFrames; i++) results[i] = last;
+                        nextTarget = totalFrames;
+                    }
+                    settle();
+                }catch(e){
+                    settle(e);
+                }
+            })();
+        });
+
+        return { results, totalFrames, failedFrames, durationSec };
+    }
+
     async function processVideo(file){
         if(isProcessing)return;
         isProcessing=true;
@@ -823,6 +1011,7 @@ input[type="number"]:focus{outline:none;border-color:var(--accent-border)}
         setStatus('clock','正在加载视频...');
         progressFill.style.width='0%';
         videoControls.classList.remove('hidden');
+
         try{
             const ditherStrength=parseFloat(ditherRangeSlider.value)/100;
             const mode=cmdModeSelect.value;
@@ -831,51 +1020,101 @@ input[type="number"]:focus{outline:none;border-color:var(--accent-border)}
             if(isNaN(delay)||delay<1)delay=1;
             if(delay>20)delay=20;
             delayInput.value=delay;
-            const video=await loadVideo(file);
-            const duration=video.duration;
-            if(!duration||duration<=0)throw new Error('无法获取视频时长');
-            const totalFrames=Math.floor(duration*fps);
-            if(totalFrames<1)throw new Error('视频时长太短或帧率太低，无有效帧');
-            videoInfo.textContent=`时长 ${duration.toFixed(2)}s · 帧率 ${fps} FPS · 总帧数 ${totalFrames}`;
 
-            // 缩略图：视频第 2 秒帧；时长不足 2 秒则取最后一帧
-            try{
-                const thumbTime = (duration >= 2) ? 2 : Math.max(0, duration - 0.001);
-                await seekVideo(video, thumbTime);
-                if(video.videoWidth>0 && video.videoHeight>0){
-                    thumbnailCanvas=makeThumbnailCanvas(video, video.videoWidth, video.videoHeight);
-                }
-            }catch(thumbErr){
-                console.warn('视频缩略图抓取失败:', thumbErr);
-            }
-
-            const canvas=getWorkCanvas();
-            const ctx=canvas.__ditherCtx;
-            ctx.imageSmoothingEnabled=true;
-            const allCharArts=new Array(totalFrames);
+            let allCharArts=null;
+            let totalFrames=0;
             let failedFrames=0;
-            for(let i=1;i<=totalFrames;i++){
-                if(stopRequested){
-                    setStatus('warn','已停止处理。');
-                    progressFill.style.width='0%';
-                    videoInfo.textContent='已停止';
-                    return;
-                }
-                const time=Math.min(i/fps,duration-0.001);
+            let duration=0;
+            let engineTag='';
+
+            /* ---------- 快路径：WebCodecs ---------- */
+            if(isMP4Like(file) && hasWebCodecs() && typeof MP4Box !== 'undefined'){
                 try{
-                    await seekVideo(video,time);
-                    ctx.drawImage(video,0,0,charWidth,charHeight);
-                    allCharArts[i-1]=canvasToCharArtWithDithering(canvas,ditherStrength);
-                }catch(seekErr){
-                    failedFrames++;
-                    allCharArts[i-1]='';
-                }
-                if((i%20)===0||i===totalFrames){
-                    progressFill.style.width=((i/totalFrames)*100)+'%';
-                    setStatus('clock',`处理帧 ${i}/${totalFrames}（跳过 ${failedFrames} 帧）`);
-                    await new Promise(r=>setTimeout(r,0));
+                    setStatus('clock','WebCodecs 快速解码中...');
+                    const t0 = performance.now();
+                    const r = await extractFramesWebCodecs(file, fps, ditherStrength, {
+                        onProgress: (done, total) => {
+                            progressFill.style.width = ((done / total) * 100) + '%';
+                            setStatus('clock', `解码帧 ${done}/${total}`);
+                        },
+                        onFirstFrame: (frame) => {
+                            const w = frame.displayWidth  || frame.codedWidth;
+                            const h = frame.displayHeight || frame.codedHeight;
+                            if(w > 0 && h > 0){
+                                thumbnailCanvas = makeThumbnailCanvas(frame, w, h);
+                            }
+                        },
+                        isCancelled: () => stopRequested
+                    });
+                    allCharArts  = r.results;
+                    totalFrames  = r.totalFrames;
+                    failedFrames = r.failedFrames;
+                    duration     = r.durationSec;
+                    engineTag = ` · WebCodecs ${Math.round(performance.now() - t0)}ms`;
+                }catch(e){
+                    console.warn('WebCodecs 失败，回退 seek 模式:', e);
+                    allCharArts = null;
                 }
             }
+
+            /* ---------- 慢路径：逐帧 seek（原有逻辑，兜底） ---------- */
+            if(!allCharArts){
+                setStatus('clock','正在加载视频（兼容模式）...');
+                const video=await loadVideo(file);
+                duration=video.duration;
+                if(!duration||duration<=0)throw new Error('无法获取视频时长');
+                totalFrames=Math.floor(duration*fps);
+                if(totalFrames<1)throw new Error('视频时长太短或帧率太低，无有效帧');
+
+                try{
+                    const thumbTime = (duration >= 2) ? 2 : Math.max(0, duration - 0.001);
+                    await seekVideo(video, thumbTime);
+                    if(video.videoWidth>0 && video.videoHeight>0){
+                        thumbnailCanvas=makeThumbnailCanvas(video, video.videoWidth, video.videoHeight);
+                    }
+                }catch(thumbErr){
+                    console.warn('视频缩略图抓取失败:', thumbErr);
+                }
+
+                const canvas=getWorkCanvas();
+                const ctx=canvas.__ditherCtx;
+                ctx.imageSmoothingEnabled=true;
+                allCharArts=new Array(totalFrames);
+                for(let i=1;i<=totalFrames;i++){
+                    if(stopRequested){
+                        setStatus('warn','已停止处理。');
+                        progressFill.style.width='0%';
+                        videoInfo.textContent='已停止';
+                        return;
+                    }
+                    const time=Math.min(i/fps,duration-0.001);
+                    try{
+                        await seekVideo(video,time);
+                        ctx.drawImage(video,0,0,charWidth,charHeight);
+                        allCharArts[i-1]=canvasToCharArtWithDithering(canvas,ditherStrength);
+                    }catch(seekErr){
+                        failedFrames++;
+                        allCharArts[i-1]='';
+                    }
+                    if((i%20)===0||i===totalFrames){
+                        progressFill.style.width=((i/totalFrames)*100)+'%';
+                        setStatus('clock',`处理帧 ${i}/${totalFrames}（跳过 ${failedFrames} 帧）`);
+                        await new Promise(r=>setTimeout(r,0));
+                    }
+                }
+                engineTag = ' · 逐帧 seek';
+            }
+
+            if(stopRequested){
+                setStatus('warn','已停止处理。');
+                progressFill.style.width='0%';
+                videoInfo.textContent='已停止';
+                return;
+            }
+
+            videoInfo.textContent =
+                `时长 ${duration.toFixed(2)}s · 帧率 ${fps} FPS · 总帧数 ${totalFrames}${engineTag}`;
+
             videoFrameData={allCharArts,totalFrames,fps,failedFrames};
             currentMode='video';
             generateVideoCommands(videoFrameData,mode,delay);
@@ -1069,7 +1308,7 @@ input[type="number"]:focus{outline:none;border-color:var(--accent-border)}
         isPlaying=false;
         if(previewTimer){
             clearTimeout(previewTimer);
-            clearInterval(previewTimer);  // 兼容旧逻辑
+            clearInterval(previewTimer);
             previewTimer=null;
         }
         const pb=document.getElementById('playPauseBtn');
@@ -1645,7 +1884,6 @@ input[type="number"]:focus{outline:none;border-color:var(--accent-border)}
         ]);
     }
 
-    /* ========== 世界缩略图：素材图片/视频帧 + 水印 ========== */
     function generateWorldIcon(){
         const W=THUMB_W,H=THUMB_H;
         const canvas=document.createElement('canvas');
